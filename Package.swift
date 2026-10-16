@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "netglide",
     platforms: [
-        .macOS("10.15.4"),
+        .macOS(.v11),
         .iOS(.v13),
         .tvOS(.v13),
         .watchOS(.v6),
