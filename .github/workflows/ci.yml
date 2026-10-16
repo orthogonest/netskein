@@ -14,30 +14,13 @@ on:
 jobs:
   build-test:
     name: Build + Tests (Swift ${{ matrix.swift }})
-
     runs-on: macos-latest
-
-    strategy:
-      matrix:
-        include:
-          - swift: "6.1"
-            path: "/Applications/Xcode_16.1.app/Contents/Developer"
-          - swift: "6.2"
-            path: "/Applications/Xcode_16.2.app/Contents/Developer"
-
-    env:
-      DEVELOPER_DIR: ${{ matrix.path }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify Environment Toolchain
-        run: |
-          echo "ACTIVE DEVELOPER PATH:"
-          xcode-select -p
-          echo "ACTIVE SWIFT VERSION:"
-          swift --version
+      - name: Verify Host Swift Version
+        run: swift --version
 
       - name: Select Swift Version
         uses: swift-actions/setup-swift@v2
