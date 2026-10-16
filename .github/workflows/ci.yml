@@ -29,6 +29,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Hard Select Xcode and Toolchain
+        run: |
+          sudo xcode-select -s \
+            /Applications/${{ matrix.xcode }}/Contents/Developer
+          echo "CURRENT SWIFT VERSION:"
+          swift --version
+          echo "CURRENT DEVELOPER DIR:"
+          xcode-select -p
+
       - name: Select Swift Version
         uses: swift-actions/setup-swift@v2
         with:
@@ -46,7 +55,9 @@ jobs:
           restore-keys: ${{ runner.os }}-swiftpm-${{ matrix.swift }}-
 
       - name: Resolve Dependencies
-        run: swift package resolve
+        run: |
+          swift package clean
+          swift package resolve
 
       - name: Build
         run: swift build --build-tests
