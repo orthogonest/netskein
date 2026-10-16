@@ -29,13 +29,14 @@ public extension NetGlideResponse {
     }
 
     func text() -> String? {
-        guard var body = bytes() else { return nil }
-        return body.readString(length: body.readableBytes)
+        guard let body = bytes() else { return nil }
+        return body.getString(at: body.readerIndex, length: body.readableBytes)
     }
 
     func json<T: Decodable>(_: T.Type, decoder: JSONDecoder = JSONDecoder()) throws -> T {
-        guard var body = bytes(),
-              let data = body.readData(length: body.readableBytes)
+        guard let body = bytes(),
+              let data = body.getData(at: body.readerIndex, length: body.readableBytes),
+              !data.isEmpty
         else {
             throw NetGlideError.emptyResponseBody
         }
