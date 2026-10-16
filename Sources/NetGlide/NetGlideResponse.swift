@@ -1,9 +1,10 @@
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 import NIOHTTP1
 
 public struct NetGlideResponse {
-    let underlyingResponse: HTTPClient.Response
+    private let underlyingResponse: HTTPClient.Response
 
     public init(underlyingResponse: HTTPClient.Response) {
         self.underlyingResponse = underlyingResponse
@@ -21,13 +22,17 @@ public struct NetGlideResponse {
         return self
     }
 
+    public func bytes() -> ByteBuffer? {
+        underlyingResponse.body
+    }
+
     public func text() -> String? {
-        guard var body = underlyingResponse.body else { return nil }
+        guard var body = bytes() else { return nil }
         return body.readString(length: body.readableBytes)
     }
 
     public func json<T: Decodable>(_: T.Type, decoder: JSONDecoder = JSONDecoder()) throws -> T {
-        guard var body = underlyingResponse.body,
+        guard var body = bytes(),
               let data = body.readData(length: body.readableBytes)
         else {
             throw NetGlideError.emptyResponseBody
