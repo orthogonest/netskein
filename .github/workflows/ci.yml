@@ -19,7 +19,11 @@ jobs:
 
     strategy:
       matrix:
-        swift: ["6.1", "6.2"]
+        include:
+          - swift: "6.1"
+            xcode: "16.1"
+          - swift: "6.2"
+            xcode: "16.2"
 
     steps:
       - name: Checkout repository
