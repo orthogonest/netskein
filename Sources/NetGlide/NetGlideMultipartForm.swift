@@ -15,8 +15,10 @@ public struct NetGlideMultipartForm: Sendable {
     public static var builder: NetGlideMultipartFormBuilder {
         NetGlideMultipartFormBuilder()
     }
+}
 
-    public var estimatedLength: Int {
+public extension NetGlideMultipartForm {
+    var estimatedLength: Int {
         var total = 0
         for part in parts {
             total += 4 + boundary.utf8.count // "--" + boundary + "\r\n"
