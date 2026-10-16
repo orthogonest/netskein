@@ -26,7 +26,8 @@ let package = Package(
         ),
         .testTarget(
             name: "NetGlideTests",
-            dependencies: ["NetGlide"]
+            dependencies: ["NetGlide"],
+            path: "Tests/NetGlideTests"
         ),
     ]
 )
