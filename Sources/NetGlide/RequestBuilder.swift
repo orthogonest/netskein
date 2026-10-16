@@ -21,15 +21,17 @@ public final class RequestBuilder {
         self.url = url
         headers = client.defaultHeaders
     }
+}
 
+public extension RequestBuilder {
     @discardableResult
-    public func header(_ name: String, _ value: String) -> Self {
+    func header(_ name: String, _ value: String) -> Self {
         headers.add(name: name, value: value)
         return self
     }
 
     @discardableResult
-    public func json(_ bodyObject: some Encodable) throws -> Self {
+    func json(_ bodyObject: some Encodable) throws -> Self {
         let data = try JSONEncoder().encode(bodyObject)
         var buffer = ByteBufferAllocator().buffer(capacity: data.count)
         buffer.writeBytes(data)
@@ -39,7 +41,7 @@ public final class RequestBuilder {
     }
 
     @discardableResult
-    public func query(_ items: [String: String]) -> Self {
+    func query(_ items: [String: String]) -> Self {
         guard var components = URLComponents(string: url) else { return self }
 
         var queryItems = components.queryItems ?? []
@@ -56,12 +58,12 @@ public final class RequestBuilder {
     }
 
     @discardableResult
-    public func timeout(_ duration: TimeAmount) -> Self {
+    func timeout(_ duration: TimeAmount) -> Self {
         timeout = duration
         return self
     }
 
-    public func send() async throws -> NetGlideResponse {
+    func send() async throws -> NetGlideResponse {
         let request = try HTTPClient.Request(
             url: url,
             method: method,
