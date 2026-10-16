@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
+import NIOSSL
 
 public final class NetGlideClient: Sendable {
     let underlyingClient: HTTPClient
@@ -61,6 +62,8 @@ public final class NetGlideClientBuilder {
     private var proxy: NetGlideProxy?
     private var redirectPolicy: NetGlideRedirectPolicy = .default
     private var cookieJar: NetGlideCookieJar?
+    private var tlsConfiguration: TLSConfiguration?
+    private var dangerAcceptInvalidCerts: Bool = false
 
     public init() {}
 
@@ -106,20 +109,39 @@ public final class NetGlideClientBuilder {
         return self
     }
 
+    @discardableResult
+    public func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
+        tlsConfiguration = configuration
+        return self
+    }
+
+    @discardableResult
+    public func dangerAcceptInvalidCerts(_ accept: Bool) -> Self {
+        dangerAcceptInvalidCerts = accept
+        return self
+    }
+
     public func build() -> NetGlideClient {
         var config = HTTPClient.Configuration()
 
-        let timeoutConfig = HTTPClient.Configuration.Timeout(
+        config.timeout = HTTPClient.Configuration.Timeout(
             connect: connectTimeout,
             read: readTimeout
         )
-        config.timeout = timeoutConfig
 
         if let proxy {
             config.proxy = proxy.underlyingProxy
         }
 
         config.redirectConfiguration = redirectPolicy.underlyingConfiguration
+
+        var tlsConfig = tlsConfiguration ?? TLSConfiguration.makeClientConfiguration()
+
+        if dangerAcceptInvalidCerts {
+            tlsConfig.certificateVerification = .none
+        }
+
+        config.tlsConfiguration = tlsConfig
 
         let client = HTTPClient(
             eventLoopGroupProvider: eventLoopGroupProvider,
