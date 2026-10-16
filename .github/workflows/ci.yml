@@ -21,22 +21,23 @@ jobs:
       matrix:
         include:
           - swift: "6.1"
-            xcode: "16.1"
+            path: "/Applications/Xcode_16.1.app/Contents/Developer"
           - swift: "6.2"
-            xcode: "16.2"
+            path: "/Applications/Xcode_16.2.app/Contents/Developer"
+
+    env:
+      DEVELOPER_DIR: ${{ matrix.path }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Hard Select Xcode and Toolchain
+      - name: Verify Environment Toolchain
         run: |
-          sudo xcode-select -s \
-            "/Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer"
-          echo "CURRENT SWIFT VERSION:"
-          swift --version
-          echo "CURRENT DEVELOPER DIR:"
+          echo "ACTIVE DEVELOPER PATH:"
           xcode-select -p
+          echo "ACTIVE SWIFT VERSION:"
+          swift --version
 
       - name: Select Swift Version
         uses: swift-actions/setup-swift@v2
