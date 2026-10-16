@@ -9,6 +9,7 @@ public final class RequestBuilder {
     private var url: String
     private var headers: HTTPHeaders
     private var body: HTTPClient.Body?
+    private var timeout: TimeAmount?
 
     public init(
         client: NetGlideClient,
@@ -54,6 +55,12 @@ public final class RequestBuilder {
         return self
     }
 
+    @discardableResult
+    public func timeout(_ duration: TimeAmount) -> Self {
+        timeout = duration
+        return self
+    }
+
     public func send() async throws -> NetGlideResponse {
         let request = try HTTPClient.Request(
             url: url,
@@ -61,7 +68,16 @@ public final class RequestBuilder {
             headers: headers,
             body: body
         )
-        let response = try await client.underlyingClient.execute(request: request).get()
+
+        let response: HTTPClient.Response
+
+        if let timeout {
+            let deadline = NIODeadline.now() + timeout
+            response = try await client.underlyingClient.execute(request: request, deadline: deadline).get()
+        } else {
+            response = try await client.underlyingClient.execute(request: request).get()
+        }
+
         return NetGlideResponse(underlyingResponse: response)
     }
 }
