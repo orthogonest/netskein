@@ -81,14 +81,7 @@ public extension RequestBuilder {
 
         let deadline = timeout.map { NIODeadline.now() + $0 }
 
-        let response: HTTPClient.Response
-        let future = client.underlyingClient.execute(request: request, deadline: deadline)
-
-        if #available(macOS 10.15, iOS 13.0, *) {
-            response = try await future.get()
-        } else {
-            response = try await future.fallbackGet()
-        }
+        let response = try await client.underlyingClient.execute(request: request, deadline: deadline).get()
 
         let result = NetGlideResponse(underlyingResponse: response)
 
