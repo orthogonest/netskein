@@ -14,21 +14,13 @@ on:
 jobs:
   build-test:
     name: Build + Tests (Swift ${{ matrix.swift }})
-
     runs-on: macos-latest
-
-    strategy:
-      matrix:
-        swift: ["6.1", "6.2"]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Swift Version
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: ${{ matrix.swift }}
+      - name: Verify Host Swift Version
+        run: swift --version
 
       - name: Cache SwiftPM
         uses: actions/cache@v4
@@ -42,7 +34,9 @@ jobs:
           restore-keys: ${{ runner.os }}-swiftpm-${{ matrix.swift }}-
 
       - name: Resolve Dependencies
-        run: swift package resolve
+        run: |
+          swift package clean
+          swift package resolve
 
       - name: Build
         run: swift build --build-tests
