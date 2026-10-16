@@ -9,29 +9,31 @@ public struct NetGlideResponse {
     public init(underlyingResponse: HTTPClient.Response) {
         self.underlyingResponse = underlyingResponse
     }
+}
 
-    public var status: HTTPResponseStatus {
+public extension NetGlideResponse {
+    var status: HTTPResponseStatus {
         underlyingResponse.status
     }
 
     @discardableResult
-    public func errorForStatus() throws -> Self {
+    func errorForStatus() throws -> Self {
         if status.code < 200 || status.code >= 299 {
             throw NetGlideError.badStatus(status)
         }
         return self
     }
 
-    public func bytes() -> ByteBuffer? {
+    func bytes() -> ByteBuffer? {
         underlyingResponse.body
     }
 
-    public func text() -> String? {
+    func text() -> String? {
         guard var body = bytes() else { return nil }
         return body.readString(length: body.readableBytes)
     }
 
-    public func json<T: Decodable>(_: T.Type, decoder: JSONDecoder = JSONDecoder()) throws -> T {
+    func json<T: Decodable>(_: T.Type, decoder: JSONDecoder = JSONDecoder()) throws -> T {
         guard var body = bytes(),
               let data = body.readData(length: body.readableBytes)
         else {

@@ -23,7 +23,7 @@ public final class NetGlideClient: Sendable {
         self.init(underlyingClient: client, defaultHeaders: defaultHeaders)
     }
 
-    public static func builder() -> NetGlideClientBuilder {
+    public static var builder: NetGlideClientBuilder {
         NetGlideClientBuilder()
     }
 }
