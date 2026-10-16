@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
+import NIOHTTPCompression
 import NIOSSL
 
 public final class NetGlideClient: Sendable {
@@ -61,9 +62,11 @@ public final class NetGlideClientBuilder {
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .singleton
     private var proxy: NetGlideProxy?
     private var redirectPolicy: NetGlideRedirectPolicy = .default
+    private var automaticDecompression: Bool = true
+    private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit = .size(10 * 1024 * 1024)
     private var cookieJar: NetGlideCookieJar?
     private var tlsConfiguration: TLSConfiguration?
-    private var dangerAcceptInvalidCerts: Bool = false
+    private var acceptInvalidCertificates: Bool = false
 
     public init() {}
 
@@ -104,6 +107,18 @@ public final class NetGlideClientBuilder {
     }
 
     @discardableResult
+    public func automaticDecompression(_ enabled: Bool) -> Self {
+        automaticDecompression = enabled
+        return self
+    }
+
+    @discardableResult
+    public func decompressionLimit(_ limit: NIOHTTPDecompression.DecompressionLimit) -> Self {
+        decompressionLimit = limit
+        return self
+    }
+
+    @discardableResult
     public func cookieStore(_ jar: NetGlideCookieJar) -> Self {
         cookieJar = jar
         return self
@@ -116,8 +131,8 @@ public final class NetGlideClientBuilder {
     }
 
     @discardableResult
-    public func dangerAcceptInvalidCerts(_ accept: Bool) -> Self {
-        dangerAcceptInvalidCerts = accept
+    public func acceptInvalidCertificates(_ accept: Bool) -> Self {
+        acceptInvalidCertificates = accept
         return self
     }
 
@@ -136,12 +151,16 @@ public final class NetGlideClientBuilder {
         config.redirectConfiguration = redirectPolicy.underlyingConfiguration
 
         var tlsConfig = tlsConfiguration ?? TLSConfiguration.makeClientConfiguration()
-
-        if dangerAcceptInvalidCerts {
+        if acceptInvalidCertificates {
             tlsConfig.certificateVerification = .none
         }
-
         config.tlsConfiguration = tlsConfig
+
+        if automaticDecompression {
+            config.decompression = .enabled(limit: decompressionLimit)
+        } else {
+            config.decompression = .disabled
+        }
 
         let client = HTTPClient(
             eventLoopGroupProvider: eventLoopGroupProvider,
