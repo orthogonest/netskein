@@ -115,6 +115,31 @@ public extension RequestBuilder {
         return self
     }
 
+    @discardableResult
+    func stream(fileAtPath path: String, chunkSize: Int = 64 * 1024) -> Self {
+        let eventLoop = client.underlyingClient.eventLoopGroup.next()
+
+        guard let fileHandle = FileHandle(forReadingAtPath: path) else {
+            body = .stream { _ in
+                eventLoop.makeFailedFuture(NetGlideError.fileNotFound(path))
+            }
+            return self
+        }
+
+        let streamer = ChunkStreamer(
+            fileHandle: fileHandle,
+            chunkSize: chunkSize,
+            eventLoop: eventLoop
+        )
+
+        body = .stream { streamer.readAndWrite(using: $0) }
+
+        headers.replaceOrAdd(name: "Transfer-Encoding", value: "chunked")
+        headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
+
+        return self
+    }
+
     func send() async throws -> NetGlideResponse {
         if let jar = client.cookieJar,
            let urlObject = URL(string: url),
@@ -153,5 +178,34 @@ public extension RequestBuilder {
         }
 
         return result
+    }
+}
+
+struct ChunkStreamer {
+    let fileHandle: FileHandle
+    let chunkSize: Int
+    let eventLoop: EventLoop
+}
+
+extension ChunkStreamer {
+    func readAndWrite(using writer: HTTPClient.Body.StreamWriter) -> EventLoopFuture<Void> {
+        do {
+            guard let data = try fileHandle.read(upToCount: chunkSize),
+                  !data.isEmpty
+            else {
+                try fileHandle.close()
+                return eventLoop.makeSucceededFuture(())
+            }
+
+            var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+            buffer.writeBytes(data)
+
+            return writer.write(.byteBuffer(buffer)).flatMap {
+                self.readAndWrite(using: writer)
+            }
+        } catch {
+            try? fileHandle.close()
+            return eventLoop.makeFailedFuture(error)
+        }
     }
 }
