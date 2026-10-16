@@ -32,7 +32,7 @@ jobs:
       - name: Hard Select Xcode and Toolchain
         run: |
           sudo xcode-select -s \
-            "/Applications/Xcode_${{ matrix.version }}.app/Contents/Developer"
+            "/Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer"
           echo "CURRENT SWIFT VERSION:"
           swift --version
           echo "CURRENT DEVELOPER DIR:"
