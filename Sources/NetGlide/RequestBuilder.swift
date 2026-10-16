@@ -115,6 +115,31 @@ public extension RequestBuilder {
         return self
     }
 
+    @discardableResult
+    func stream(fileAtPath path: String, chunkSize: Int = 64 * 1024) -> Self {
+        let eventLoop = client.underlyingClient.eventLoopGroup.next()
+
+        guard let fileHandle = FileHandle(forReadingAtPath: path) else {
+            body = .stream { _ in
+                eventLoop.makeFailedFuture(NetGlideError.fileNotFound(path))
+            }
+            return self
+        }
+
+        let streamer = ChunkStreamer(
+            fileHandle: fileHandle,
+            chunkSize: chunkSize,
+            eventLoop: eventLoop
+        )
+
+        body = .stream { streamer.readAndWrite(using: $0) }
+
+        headers.replaceOrAdd(name: "Transfer-Encoding", value: "chunked")
+        headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
+
+        return self
+    }
+
     func send() async throws -> NetGlideResponse {
         if let jar = client.cookieJar,
            let urlObject = URL(string: url),
