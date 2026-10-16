@@ -64,6 +64,14 @@ public extension RequestBuilder {
     }
 
     func send() async throws -> NetGlideResponse {
+        if let jar = client.cookieJar,
+           let urlObject = URL(string: url),
+           let host = urlObject.host,
+           let cookieValue = jar.cookieHeader(for: host)
+        {
+            headers.replaceOrAdd(name: "Cookie", value: cookieValue)
+        }
+
         let request = try HTTPClient.Request(
             url: url,
             method: method,
@@ -80,6 +88,23 @@ public extension RequestBuilder {
             response = try await client.underlyingClient.execute(request: request).get()
         }
 
-        return NetGlideResponse(underlyingResponse: response)
+        let result = NetGlideResponse(underlyingResponse: response)
+
+        if let jar = client.cookieJar,
+           let urlObject = URL(string: url),
+           let host = urlObject.host
+        {
+            let setCookieHeaders = response.headers["Set-Cookie"]
+            for cookie in setCookieHeaders {
+                let components = cookie.components(separatedBy: ";")
+                guard let parts = components.first?.components(separatedBy: "="),
+                      parts.count == 2 else { continue }
+                let name = parts[0].trimmingCharacters(in: .whitespaces)
+                let value = parts[1].trimmingCharacters(in: .whitespaces)
+                jar.setCookie(host: host, name: name, value: value)
+            }
+        }
+
+        return result
     }
 }

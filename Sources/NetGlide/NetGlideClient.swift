@@ -5,13 +5,16 @@ import NIOHTTP1
 public final class NetGlideClient: Sendable {
     let underlyingClient: HTTPClient
     let defaultHeaders: HTTPHeaders
+    let cookieJar: NetGlideCookieJar?
 
     public init(
         underlyingClient: HTTPClient,
-        defaultHeaders: HTTPHeaders = .init()
+        defaultHeaders: HTTPHeaders = .init(),
+        cookieJar: NetGlideCookieJar? = nil
     ) {
         self.underlyingClient = underlyingClient
         self.defaultHeaders = defaultHeaders
+        self.cookieJar = cookieJar
     }
 
     public convenience init(defaultHeaders: HTTPHeaders = .init()) {
@@ -57,6 +60,7 @@ public final class NetGlideClientBuilder {
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .singleton
     private var proxy: NetGlideProxy?
     private var redirectPolicy: NetGlideRedirectPolicy = .default
+    private var cookieJar: NetGlideCookieJar?
 
     public init() {}
 
@@ -96,6 +100,12 @@ public final class NetGlideClientBuilder {
         return self
     }
 
+    @discardableResult
+    public func cookieStore(_ jar: NetGlideCookieJar) -> Self {
+        cookieJar = jar
+        return self
+    }
+
     public func build() -> NetGlideClient {
         var config = HTTPClient.Configuration()
 
@@ -118,7 +128,8 @@ public final class NetGlideClientBuilder {
 
         return NetGlideClient(
             underlyingClient: client,
-            defaultHeaders: defaultHeaders
+            defaultHeaders: defaultHeaders,
+            cookieJar: cookieJar
         )
     }
 }
