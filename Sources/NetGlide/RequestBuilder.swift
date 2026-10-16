@@ -141,6 +141,16 @@ public extension RequestBuilder {
     }
 
     func send() async throws -> NetGlideResponse {
+        let requestID = UUID().uuidString
+        headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
+
+        var clientLogger = client.logger
+        clientLogger[metadataKey: "request_id"] = .string(requestID)
+        clientLogger[metadataKey: "http_method"] = .string(method.rawValue)
+        clientLogger[metadataKey: "url"] = .string(url)
+
+        clientLogger.info("Initiating outbound network request")
+
         if let jar = client.cookieJar,
            let urlObject = URL(string: url),
            let host = urlObject.host,
@@ -157,10 +167,28 @@ public extension RequestBuilder {
         )
 
         let deadline = timeout.map { NIODeadline.now() + $0 }
+        let startTime = DispatchTime.now()
+        let response: HTTPClient.Response
 
-        let response = try await client.underlyingClient.execute(request: request, deadline: deadline).get()
+        do {
+            response = try await client.underlyingClient.execute(request: request, deadline: deadline).get()
 
-        let result = NetGlideResponse(underlyingResponse: response)
+            let endTime = DispatchTime.now()
+            let duration = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000_000
+            let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
+
+            clientLogger.info("Request completed successfully", metadata: [
+                "request_id": .string(activeResponseID),
+                "status_code": .string("\(response.status.code)"),
+                "duration_seconds": .string(String(format: "%.4f", duration)),
+            ])
+        } catch {
+            clientLogger.error("Network request failed", metadata: [
+                "request_id": .string(requestID),
+                "error_description": .string(error.localizedDescription),
+            ])
+            throw error
+        }
 
         if let jar = client.cookieJar,
            let urlObject = URL(string: url),
@@ -177,6 +205,6 @@ public extension RequestBuilder {
             }
         }
 
-        return result
+        return NetGlideResponse(underlyingResponse: response)
     }
 }

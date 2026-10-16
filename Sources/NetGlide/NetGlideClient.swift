@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Logging
 import NIOCore
 import NIOHTTP1
 import NIOHTTPCompression
@@ -8,15 +9,18 @@ public final class NetGlideClient: Sendable {
     let underlyingClient: HTTPClient
     let defaultHeaders: HTTPHeaders
     let cookieJar: NetGlideCookieJar?
+    let logger: Logger
 
     public init(
         underlyingClient: HTTPClient,
         defaultHeaders: HTTPHeaders = .init(),
-        cookieJar: NetGlideCookieJar? = nil
+        cookieJar: NetGlideCookieJar? = nil,
+        logger: Logger = Logger(label: "com.netglide.network")
     ) {
         self.underlyingClient = underlyingClient
         self.defaultHeaders = defaultHeaders
         self.cookieJar = cookieJar
+        self.logger = logger
     }
 
     public convenience init(defaultHeaders: HTTPHeaders = .init()) {
@@ -67,6 +71,7 @@ public final class NetGlideClientBuilder {
     private var cookieJar: NetGlideCookieJar?
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool = false
+    private var logger: Logger = .init(label: "com.netglide.network")
 
     public init() {}
 
@@ -136,6 +141,12 @@ public final class NetGlideClientBuilder {
         return self
     }
 
+    @discardableResult
+    public func logger(_ logger: Logger) -> Self {
+        self.logger = logger
+        return self
+    }
+
     public func build() -> NetGlideClient {
         var config = HTTPClient.Configuration()
 
@@ -170,7 +181,8 @@ public final class NetGlideClientBuilder {
         return NetGlideClient(
             underlyingClient: client,
             defaultHeaders: defaultHeaders,
-            cookieJar: cookieJar
+            cookieJar: cookieJar,
+            logger: logger
         )
     }
 }
