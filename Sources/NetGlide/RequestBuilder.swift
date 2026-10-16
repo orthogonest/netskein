@@ -58,6 +58,23 @@ public extension RequestBuilder {
     }
 
     @discardableResult
+    func form(_ fields: [String: String]) -> Self {
+        var components = URLComponents()
+        components.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
+
+        guard let queryString = components.query ?? components.percentEncodedQuery else { return self }
+
+        let data = Data(queryString.utf8)
+        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+        buffer.writeBytes(data)
+
+        body = .byteBuffer(buffer)
+        headers.replaceOrAdd(name: "Content-Type", value: "application/x-www-form-urlencoded")
+
+        return self
+    }
+
+    @discardableResult
     func timeout(_ duration: TimeAmount) -> Self {
         timeout = duration
         return self
