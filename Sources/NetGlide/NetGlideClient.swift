@@ -56,6 +56,7 @@ public final class NetGlideClientBuilder {
     private var defaultHeaders: HTTPHeaders = .init()
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .singleton
     private var proxy: NetGlideProxy?
+    private var redirectPolicy: NetGlideRedirectPolicy = .default
 
     public init() {}
 
@@ -89,6 +90,12 @@ public final class NetGlideClientBuilder {
         return self
     }
 
+    @discardableResult
+    public func redirectPolicy(_ policy: NetGlideRedirectPolicy) -> Self {
+        redirectPolicy = policy
+        return self
+    }
+
     public func build() -> NetGlideClient {
         var config = HTTPClient.Configuration()
 
@@ -101,6 +108,8 @@ public final class NetGlideClientBuilder {
         if let proxy {
             config.proxy = proxy.underlyingProxy
         }
+
+        config.redirectConfiguration = redirectPolicy.underlyingConfiguration
 
         let client = HTTPClient(
             eventLoopGroupProvider: eventLoopGroupProvider,
