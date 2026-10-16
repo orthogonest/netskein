@@ -80,6 +80,41 @@ public extension RequestBuilder {
         return self
     }
 
+    @discardableResult
+    func multipart(_ form: NetGlideMultipartForm) -> Self {
+        let boundary = form.boundary
+
+        var multipartBuffer = ByteBufferAllocator().buffer(capacity: form.estimatedLength)
+
+        for part in form.parts {
+            multipartBuffer.writeString("--\(boundary)\r\n")
+
+            if let filename = part.filename {
+                multipartBuffer.writeString("Content-Disposition: form-data; name=\"\(part.name)\"; filename=\"\(filename)\"\r\n")
+            } else {
+                multipartBuffer.writeString("Content-Disposition: form-data; name=\"\(part.name)\"\r\n")
+            }
+
+            if let contentType = part.contentType {
+                multipartBuffer.writeString("Content-Type: \(contentType)\r\n")
+            }
+
+            multipartBuffer.writeString("\r\n")
+
+            var partBody = part.body
+            multipartBuffer.writeBuffer(&partBody)
+
+            multipartBuffer.writeString("\r\n")
+        }
+
+        multipartBuffer.writeString("--\(boundary)--\r\n")
+
+        body = .byteBuffer(multipartBuffer)
+        headers.replaceOrAdd(name: "Content-Type", value: "multipart/form-data; boundary=\(boundary)")
+
+        return self
+    }
+
     func send() async throws -> NetGlideResponse {
         if let jar = client.cookieJar,
            let urlObject = URL(string: url),
