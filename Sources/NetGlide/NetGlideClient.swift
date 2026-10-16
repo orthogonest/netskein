@@ -55,6 +55,7 @@ public final class NetGlideClientBuilder {
     private var readTimeout: TimeAmount?
     private var defaultHeaders: HTTPHeaders = .init()
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .singleton
+    private var proxy: NetGlideProxy?
 
     public init() {}
 
@@ -82,6 +83,12 @@ public final class NetGlideClientBuilder {
         return self
     }
 
+    @discardableResult
+    public func proxy(_ proxy: NetGlideProxy) -> Self {
+        self.proxy = proxy
+        return self
+    }
+
     public func build() -> NetGlideClient {
         var config = HTTPClient.Configuration()
 
@@ -90,6 +97,10 @@ public final class NetGlideClientBuilder {
             read: readTimeout
         )
         config.timeout = timeoutConfig
+
+        if let proxy {
+            config.proxy = proxy.underlyingProxy
+        }
 
         let client = HTTPClient(
             eventLoopGroupProvider: eventLoopGroupProvider,
