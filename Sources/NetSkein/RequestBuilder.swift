@@ -4,7 +4,7 @@ import NIOCore
 import NIOHTTP1
 
 public final class RequestBuilder {
-    private let client: NetGlideClient
+    private let client: NetSkeinClient
     private var method: HTTPMethod
     private var url: String
     private var headers: HTTPHeaders
@@ -13,7 +13,7 @@ public final class RequestBuilder {
     private let fileManager: FileManager
 
     public init(
-        client: NetGlideClient,
+        client: NetSkeinClient,
         method: HTTPMethod,
         url: String
     ) {
@@ -107,7 +107,7 @@ public extension RequestBuilder {
     }
 
     @discardableResult
-    func multipart(_ form: NetGlideMultipartForm) -> Self {
+    func multipart(_ form: NetSkeinMultipartForm) -> Self {
         let boundary = form.boundary
 
         var multipartBuffer = ByteBufferAllocator().buffer(capacity: form.estimatedLength)
@@ -147,7 +147,7 @@ public extension RequestBuilder {
 
         guard let fileHandle = FileHandle(forReadingAtPath: path) else {
             body = .stream { _ in
-                eventLoop.makeFailedFuture(NetGlideError.fileNotFound(path))
+                eventLoop.makeFailedFuture(NetSkeinError.fileNotFound(path))
             }
             return self
         }
@@ -166,7 +166,7 @@ public extension RequestBuilder {
         return self
     }
 
-    func send() async throws -> NetGlideResponse {
+    func send() async throws -> NetSkeinResponse {
         let requestID = UUID().uuidString
         headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
 
@@ -201,7 +201,7 @@ public extension RequestBuilder {
             let cookieHeaders = response.headers["Set-Cookie"]
             setCookie(cookieHeaders: cookieHeaders)
 
-            return NetGlideResponse(underlyingResponse: response)
+            return NetSkeinResponse(underlyingResponse: response)
         } catch {
             clientLogger.error("Network request failed", metadata: [
                 "request_id": .string(requestID),
@@ -228,7 +228,7 @@ public extension RequestBuilder {
 
         fileManager.createFile(atPath: path, contents: nil)
         guard let fileHandle = FileHandle(forWritingAtPath: path) else {
-            throw NetGlideError.fileNotFound(path)
+            throw NetSkeinError.fileNotFound(path)
         }
 
         let request = try HTTPClient.Request(url: url, method: method, headers: headers, body: body)
@@ -236,7 +236,7 @@ public extension RequestBuilder {
         let eventLoop = client.underlyingClient.eventLoopGroup.next()
         let startTime = DispatchTime.now()
 
-        let delegate = NetGlideDownloadDelegate(fileHandle: fileHandle, eventLoop: eventLoop)
+        let delegate = NetSkeinDownloadDelegate(fileHandle: fileHandle, eventLoop: eventLoop)
 
         do {
             let task = client.underlyingClient.execute(

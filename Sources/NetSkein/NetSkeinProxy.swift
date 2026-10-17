@@ -1,10 +1,10 @@
 import AsyncHTTPClient
 
-public struct NetGlideProxy: Sendable {
+public struct NetSkeinProxy: Sendable {
     let underlyingProxy: HTTPClient.Configuration.Proxy
 }
 
-public extension NetGlideProxy {
+public extension NetSkeinProxy {
     static func http(host: String, port: Int) -> Self {
         .init(underlyingProxy: .server(host: host, port: port))
     }

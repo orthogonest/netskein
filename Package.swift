@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "netglide",
+    name: "netskein",
     platforms: [
         .macOS(.v11),
         .iOS(.v13),
@@ -12,8 +12,8 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "NetGlide",
-            targets: ["NetGlide"]
+            name: "NetSkein",
+            targets: ["NetSkein"]
         ),
     ],
     dependencies: [
@@ -21,16 +21,16 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "NetGlide",
+            name: "NetSkein",
             dependencies: [
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
             ],
-            path: "Sources/NetGlide"
+            path: "Sources/NetSkein"
         ),
         .testTarget(
-            name: "NetGlideTests",
-            dependencies: ["NetGlide"],
-            path: "Tests/NetGlideTests"
+            name: "NetSkeinTests",
+            dependencies: ["NetSkein"],
+            path: "Tests/NetSkeinTests"
         ),
     ]
 )

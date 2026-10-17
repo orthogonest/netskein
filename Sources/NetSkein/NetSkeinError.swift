@@ -1,13 +1,13 @@
 import Foundation
 import NIOHTTP1
 
-public enum NetGlideError: Error, Equatable, Hashable {
+public enum NetSkeinError: Error, Equatable, Hashable {
     case badStatus(HTTPResponseStatus)
     case emptyResponseBody
     case fileNotFound(String)
 }
 
-extension NetGlideError: LocalizedError {
+extension NetSkeinError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .badStatus(status):

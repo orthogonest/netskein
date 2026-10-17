@@ -5,16 +5,16 @@ import NIOHTTP1
 import NIOHTTPCompression
 import NIOSSL
 
-public final class NetGlideClient: Sendable {
+public final class NetSkeinClient: Sendable {
     let underlyingClient: HTTPClient
     let defaultHeaders: HTTPHeaders
-    let cookieJar: NetGlideCookieJar?
+    let cookieJar: NetSkeinCookieJar?
     let logger: Logger
 
     public init(
         underlyingClient: HTTPClient,
         defaultHeaders: HTTPHeaders = .init(),
-        cookieJar: NetGlideCookieJar? = nil,
+        cookieJar: NetSkeinCookieJar? = nil,
         logger: Logger = Logger(label: "com.netglide.network")
     ) {
         self.underlyingClient = underlyingClient
@@ -28,12 +28,12 @@ public final class NetGlideClient: Sendable {
         self.init(underlyingClient: client, defaultHeaders: defaultHeaders)
     }
 
-    public static var builder: NetGlideClientBuilder {
-        NetGlideClientBuilder()
+    public static var builder: NetSkeinClientBuilder {
+        NetSkeinClientBuilder()
     }
 }
 
-public extension NetGlideClient {
+public extension NetSkeinClient {
     func get(_ url: String) -> RequestBuilder {
         RequestBuilder(client: self, method: .GET, url: url)
     }
@@ -59,16 +59,16 @@ public extension NetGlideClient {
     }
 }
 
-public final class NetGlideClientBuilder {
+public final class NetSkeinClientBuilder {
     private var connectTimeout: TimeAmount?
     private var readTimeout: TimeAmount?
     private var defaultHeaders: HTTPHeaders = .init()
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider = .singleton
-    private var proxy: NetGlideProxy?
-    private var redirectPolicy: NetGlideRedirectPolicy = .default
+    private var proxy: NetSkeinProxy?
+    private var redirectPolicy: NetSkeinRedirectPolicy = .default
     private var automaticDecompression: Bool = true
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit = .size(10 * 1024 * 1024)
-    private var cookieJar: NetGlideCookieJar?
+    private var cookieJar: NetSkeinCookieJar?
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool = false
     private var logger: Logger = .init(label: "com.netglide.network")
@@ -100,13 +100,13 @@ public final class NetGlideClientBuilder {
     }
 
     @discardableResult
-    public func proxy(_ proxy: NetGlideProxy) -> Self {
+    public func proxy(_ proxy: NetSkeinProxy) -> Self {
         self.proxy = proxy
         return self
     }
 
     @discardableResult
-    public func redirectPolicy(_ policy: NetGlideRedirectPolicy) -> Self {
+    public func redirectPolicy(_ policy: NetSkeinRedirectPolicy) -> Self {
         redirectPolicy = policy
         return self
     }
@@ -124,7 +124,7 @@ public final class NetGlideClientBuilder {
     }
 
     @discardableResult
-    public func cookieStore(_ jar: NetGlideCookieJar) -> Self {
+    public func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
         cookieJar = jar
         return self
     }
@@ -147,7 +147,7 @@ public final class NetGlideClientBuilder {
         return self
     }
 
-    public func build() -> NetGlideClient {
+    public func build() -> NetSkeinClient {
         var config = HTTPClient.Configuration()
 
         config.timeout = HTTPClient.Configuration.Timeout(
@@ -178,7 +178,7 @@ public final class NetGlideClientBuilder {
             configuration: config
         )
 
-        return NetGlideClient(
+        return NetSkeinClient(
             underlyingClient: client,
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,

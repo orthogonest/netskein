@@ -1,6 +1,6 @@
 import NIOHTTP1
 
-public final class NetGlideCookieJar: @unchecked Sendable {
+public final class NetSkeinCookieJar: @unchecked Sendable {
     private var cookies: [String: [String: String]]
     private let mutex: Mutex
 

@@ -1,4 +1,4 @@
-@testable import NetGlide
+@testable import NetSkein
 import Testing
 
 @Test func example() {

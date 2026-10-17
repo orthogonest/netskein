@@ -2,13 +2,13 @@ import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
 
-public enum NetGlideRedirectPolicy: Sendable {
+public enum NetSkeinRedirectPolicy: Sendable {
     case `default`
     case none
     case limited(Int)
 }
 
-extension NetGlideRedirectPolicy {
+extension NetSkeinRedirectPolicy {
     var underlyingConfiguration: HTTPClient.Configuration.RedirectConfiguration {
         switch self {
         case .default:

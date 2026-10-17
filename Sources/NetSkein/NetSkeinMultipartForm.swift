@@ -1,7 +1,7 @@
 import Foundation
 import NIOCore
 
-public struct NetGlideMultipartForm: Sendable {
+public struct NetSkeinMultipartForm: Sendable {
     struct Part {
         let name: String
         let filename: String?
@@ -12,12 +12,12 @@ public struct NetGlideMultipartForm: Sendable {
     let boundary: String
     let parts: [Part]
 
-    public static var builder: NetGlideMultipartFormBuilder {
-        NetGlideMultipartFormBuilder()
+    public static var builder: NetSkeinMultipartFormBuilder {
+        NetSkeinMultipartFormBuilder()
     }
 }
 
-public extension NetGlideMultipartForm {
+public extension NetSkeinMultipartForm {
     var estimatedLength: Int {
         var total = 0
         for part in parts {
@@ -38,25 +38,25 @@ public extension NetGlideMultipartForm {
     }
 }
 
-public final class NetGlideMultipartFormBuilder {
+public final class NetSkeinMultipartFormBuilder {
     private let boundary: String
     private let mutex: Mutex
-    private var parts: [NetGlideMultipartForm.Part]
+    private var parts: [NetSkeinMultipartForm.Part]
 
     public init() {
-        boundary = "NetGlideBoundary-\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        boundary = "NetSkeinBoundary-\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         mutex = Mutex()
         parts = []
     }
 }
 
-public extension NetGlideMultipartFormBuilder {
+public extension NetSkeinMultipartFormBuilder {
     @discardableResult
     func text(name: String, value: String) -> Self {
         mutex.withLock {
             var buffer = ByteBufferAllocator().buffer(capacity: value.utf8.count)
             buffer.writeString(value)
-            parts.append(NetGlideMultipartForm.Part(
+            parts.append(NetSkeinMultipartForm.Part(
                 name: name,
                 filename: nil,
                 contentType: nil,
@@ -69,7 +69,7 @@ public extension NetGlideMultipartFormBuilder {
     @discardableResult
     func file(name: String, filename: String, contentType: String, body: ByteBuffer) -> Self {
         mutex.withLock {
-            parts.append(NetGlideMultipartForm.Part(
+            parts.append(NetSkeinMultipartForm.Part(
                 name: name,
                 filename: filename,
                 contentType: contentType,
@@ -79,9 +79,9 @@ public extension NetGlideMultipartFormBuilder {
         return self
     }
 
-    func build() -> NetGlideMultipartForm {
+    func build() -> NetSkeinMultipartForm {
         mutex.withLock {
-            NetGlideMultipartForm(boundary: boundary, parts: parts)
+            NetSkeinMultipartForm(boundary: boundary, parts: parts)
         }
     }
 }

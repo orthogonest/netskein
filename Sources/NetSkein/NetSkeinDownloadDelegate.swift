@@ -3,7 +3,7 @@ import Foundation
 import NIOCore
 import NIOHTTP1
 
-public final class NetGlideDownloadDelegate: @unchecked Sendable {
+public final class NetSkeinDownloadDelegate: @unchecked Sendable {
     private let fileHandle: FileHandle
     private let eventLoop: EventLoop
     private let mutex: Mutex
@@ -16,7 +16,7 @@ public final class NetGlideDownloadDelegate: @unchecked Sendable {
     }
 }
 
-extension NetGlideDownloadDelegate: HTTPClientResponseDelegate {
+extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     public typealias Response = HTTPResponseHead
 
     public func didReceiveHead(task: HTTPClient.Task<Response>, _ head: HTTPResponseHead) -> EventLoopFuture<Void> {
@@ -25,7 +25,7 @@ extension NetGlideDownloadDelegate: HTTPClientResponseDelegate {
         }
 
         guard head.status == .ok else {
-            return task.eventLoop.makeFailedFuture(NetGlideError.badStatus(head.status))
+            return task.eventLoop.makeFailedFuture(NetSkeinError.badStatus(head.status))
         }
 
         return task.eventLoop.makeSucceededVoidFuture()
@@ -49,7 +49,7 @@ extension NetGlideDownloadDelegate: HTTPClientResponseDelegate {
         try fileHandle.close()
 
         guard let head = mutex.withLock({ self.responseHead }) else {
-            throw NetGlideError.emptyResponseBody
+            throw NetSkeinError.emptyResponseBody
         }
 
         return head
