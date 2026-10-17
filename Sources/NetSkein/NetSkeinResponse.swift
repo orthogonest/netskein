@@ -3,7 +3,7 @@ import Foundation
 import NIOCore
 import NIOHTTP1
 
-public struct NetGlideResponse {
+public struct NetSkeinResponse {
     private let underlyingResponse: HTTPClient.Response
 
     public init(underlyingResponse: HTTPClient.Response) {
@@ -11,7 +11,7 @@ public struct NetGlideResponse {
     }
 }
 
-public extension NetGlideResponse {
+public extension NetSkeinResponse {
     var status: HTTPResponseStatus {
         underlyingResponse.status
     }
@@ -19,7 +19,7 @@ public extension NetGlideResponse {
     @discardableResult
     func errorForStatus() throws -> Self {
         if status.code < 200 || status.code >= 299 {
-            throw NetGlideError.badStatus(status)
+            throw NetSkeinError.badStatus(status)
         }
         return self
     }
@@ -38,7 +38,7 @@ public extension NetGlideResponse {
               let data = body.getData(at: body.readerIndex, length: body.readableBytes),
               !data.isEmpty
         else {
-            throw NetGlideError.emptyResponseBody
+            throw NetSkeinError.emptyResponseBody
         }
 
         return try decoder.decode(T.self, from: data)
