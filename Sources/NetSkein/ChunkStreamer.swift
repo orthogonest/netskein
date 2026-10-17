@@ -1,5 +1,10 @@
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+
 import AsyncHTTPClient
-import Foundation
 import NIOCore
 
 struct ChunkStreamer {

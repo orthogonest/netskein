@@ -1,18 +1,24 @@
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+
 import AsyncHTTPClient
-import Foundation
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
 
 public final class NetSkeinDownloadDelegate: @unchecked Sendable {
     private let fileHandle: FileHandle
     private let eventLoop: EventLoop
-    private let mutex: Mutex
+    private let lock: NIOLock
     private var responseHead: HTTPResponseHead?
 
     public init(fileHandle: FileHandle, eventLoop: EventLoop) {
         self.fileHandle = fileHandle
         self.eventLoop = eventLoop
-        mutex = Mutex()
+        lock = NIOLock()
     }
 }
 
@@ -20,7 +26,7 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     public typealias Response = HTTPResponseHead
 
     public func didReceiveHead(task: HTTPClient.Task<Response>, _ head: HTTPResponseHead) -> EventLoopFuture<Void> {
-        mutex.withLock {
+        lock.withLock {
             self.responseHead = head
         }
 
@@ -48,7 +54,7 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     public func didFinishRequest(task _: HTTPClient.Task<Response>) throws -> Response {
         try fileHandle.close()
 
-        guard let head = mutex.withLock({ self.responseHead }) else {
+        guard let head = lock.withLock({ self.responseHead }) else {
             throw NetSkeinError.emptyResponseBody
         }
 

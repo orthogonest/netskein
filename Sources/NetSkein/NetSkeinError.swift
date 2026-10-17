@@ -1,4 +1,9 @@
-import Foundation
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+
 import NIOHTTP1
 
 public enum NetSkeinError: Error, Equatable, Hashable {
