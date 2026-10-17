@@ -8,7 +8,7 @@ import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
 
-public struct NetSkeinResponse {
+public struct NetSkeinResponse: Sendable {
     private let underlyingResponse: HTTPClient.Response
 
     public init(underlyingResponse: HTTPClient.Response) {
@@ -21,9 +21,13 @@ public extension NetSkeinResponse {
         underlyingResponse.status
     }
 
+    var headers: HTTPHeaders {
+        underlyingResponse.headers
+    }
+
     @discardableResult
     func errorForStatus() throws -> Self {
-        if status.code < 200 || status.code >= 299 {
+        if status.code < 200 || status.code >= 300 {
             throw NetSkeinError.badStatus(status)
         }
         return self
@@ -39,13 +43,10 @@ public extension NetSkeinResponse {
     }
 
     func json<T: Decodable>(_: T.Type, decoder: JSONDecoder = JSONDecoder()) throws -> T {
-        guard let body = bytes(),
-              let data = body.getData(at: body.readerIndex, length: body.readableBytes),
-              !data.isEmpty
-        else {
+        guard let body = bytes(), body.readableBytes > 0 else {
             throw NetSkeinError.emptyResponseBody
         }
 
-        return try decoder.decode(T.self, from: data)
+        return try decoder.decode(T.self, from: body)
     }
 }

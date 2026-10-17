@@ -34,24 +34,24 @@ public final class NetSkeinClient: Sendable {
 }
 
 public extension NetSkeinClient {
-    func get(_ url: String) -> RequestBuilder {
-        RequestBuilder(client: self, method: .GET, url: url)
+    func get(_ url: String) -> RequestBuilder<GETRequest> {
+        RequestBuilder<GETRequest>(client: self, method: .GET, url: url)
     }
 
-    func post(_ url: String) -> RequestBuilder {
-        RequestBuilder(client: self, method: .POST, url: url)
+    func post(_ url: String) -> RequestBuilder<POSTRequest> {
+        RequestBuilder<POSTRequest>(client: self, method: .POST, url: url)
     }
 
-    func put(_ url: String) -> RequestBuilder {
-        RequestBuilder(client: self, method: .PUT, url: url)
+    func put(_ url: String) -> RequestBuilder<PUTRequest> {
+        RequestBuilder<PUTRequest>(client: self, method: .PUT, url: url)
     }
 
-    func patch(_ url: String) -> RequestBuilder {
-        RequestBuilder(client: self, method: .PATCH, url: url)
+    func patch(_ url: String) -> RequestBuilder<PATCHRequest> {
+        RequestBuilder<PATCHRequest>(client: self, method: .PATCH, url: url)
     }
 
-    func delete(_ url: String) -> RequestBuilder {
-        RequestBuilder(client: self, method: .DELETE, url: url)
+    func delete(_ url: String) -> RequestBuilder<DELETERequest> {
+        RequestBuilder<DELETERequest>(client: self, method: .DELETE, url: url)
     }
 
     func shutdown() async throws {
@@ -59,7 +59,7 @@ public extension NetSkeinClient {
     }
 }
 
-public final class NetSkeinClientBuilder {
+public struct NetSkeinClientBuilder: Sendable {
     private var connectTimeout: TimeAmount?
     private var readTimeout: TimeAmount?
     private var defaultHeaders: HTTPHeaders = .init()
@@ -74,80 +74,82 @@ public final class NetSkeinClientBuilder {
     private var logger: Logger = .init(label: Label.identifier)
 
     public init() {}
+}
 
+public extension NetSkeinClientBuilder {
     @discardableResult
-    public func connectTimeout(_ duration: TimeAmount) -> Self {
+    mutating func connectTimeout(_ duration: TimeAmount) -> Self {
         connectTimeout = duration
         return self
     }
 
     @discardableResult
-    public func readTimeout(_ duration: TimeAmount) -> Self {
+    mutating func readTimeout(_ duration: TimeAmount) -> Self {
         readTimeout = duration
         return self
     }
 
     @discardableResult
-    public func defaultHeaders(_ headers: HTTPHeaders) -> Self {
+    mutating func defaultHeaders(_ headers: HTTPHeaders) -> Self {
         defaultHeaders = headers
         return self
     }
 
     @discardableResult
-    public func eventLoopGroupProvider(_ provider: HTTPClient.EventLoopGroupProvider) -> Self {
+    mutating func eventLoopGroupProvider(_ provider: HTTPClient.EventLoopGroupProvider) -> Self {
         eventLoopGroupProvider = provider
         return self
     }
 
     @discardableResult
-    public func proxy(_ proxy: NetSkeinProxy) -> Self {
+    mutating func proxy(_ proxy: NetSkeinProxy) -> Self {
         self.proxy = proxy
         return self
     }
 
     @discardableResult
-    public func redirectPolicy(_ policy: NetSkeinRedirectPolicy) -> Self {
+    mutating func redirectPolicy(_ policy: NetSkeinRedirectPolicy) -> Self {
         redirectPolicy = policy
         return self
     }
 
     @discardableResult
-    public func automaticDecompression(_ enabled: Bool) -> Self {
+    mutating func automaticDecompression(_ enabled: Bool) -> Self {
         automaticDecompression = enabled
         return self
     }
 
     @discardableResult
-    public func decompressionLimit(_ limit: NIOHTTPDecompression.DecompressionLimit) -> Self {
+    mutating func decompressionLimit(_ limit: NIOHTTPDecompression.DecompressionLimit) -> Self {
         decompressionLimit = limit
         return self
     }
 
     @discardableResult
-    public func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
+    mutating func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
         cookieJar = jar
         return self
     }
 
     @discardableResult
-    public func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
+    mutating func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
         tlsConfiguration = configuration
         return self
     }
 
     @discardableResult
-    public func acceptInvalidCertificates(_ accept: Bool) -> Self {
+    mutating func acceptInvalidCertificates(_ accept: Bool) -> Self {
         acceptInvalidCertificates = accept
         return self
     }
 
     @discardableResult
-    public func logger(_ logger: Logger) -> Self {
+    mutating func logger(_ logger: Logger) -> Self {
         self.logger = logger
         return self
     }
 
-    public func build() -> NetSkeinClient {
+    func build() -> NetSkeinClient {
         var config = HTTPClient.Configuration()
 
         config.timeout = HTTPClient.Configuration.Timeout(
