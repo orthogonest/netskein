@@ -44,50 +44,43 @@ public extension NetSkeinMultipartForm {
     }
 }
 
-public final class NetSkeinMultipartFormBuilder {
+public struct NetSkeinMultipartFormBuilder: Sendable {
     private let boundary: String
-    private let lock: NIOLock
     private var parts: [NetSkeinMultipartForm.Part]
 
     public init() {
-        boundary = "NetSkeinBoundary-\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
-        lock = NIOLock()
+        let uniqueID = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        boundary = "NetSkeinBoundary-\(uniqueID)"
         parts = []
     }
 }
 
 public extension NetSkeinMultipartFormBuilder {
     @discardableResult
-    func text(name: String, value: String) -> Self {
-        lock.withLock {
-            var buffer = ByteBufferAllocator().buffer(capacity: value.utf8.count)
-            buffer.writeString(value)
-            parts.append(NetSkeinMultipartForm.Part(
-                name: name,
-                filename: nil,
-                contentType: nil,
-                body: buffer
-            ))
-        }
+    mutating func text(name: String, value: String) -> Self {
+        var buffer = ByteBufferAllocator().buffer(capacity: value.utf8.count)
+        buffer.writeString(value)
+        parts.append(NetSkeinMultipartForm.Part(
+            name: name,
+            filename: nil,
+            contentType: nil,
+            body: buffer
+        ))
         return self
     }
 
     @discardableResult
-    func file(name: String, filename: String, contentType: String, body: ByteBuffer) -> Self {
-        lock.withLock {
-            parts.append(NetSkeinMultipartForm.Part(
-                name: name,
-                filename: filename,
-                contentType: contentType,
-                body: body
-            ))
-        }
+    mutating func file(name: String, filename: String, contentType: String, body: ByteBuffer) -> Self {
+        parts.append(NetSkeinMultipartForm.Part(
+            name: name,
+            filename: filename,
+            contentType: contentType,
+            body: body
+        ))
         return self
     }
 
-    func build() -> NetSkeinMultipartForm {
-        lock.withLock {
-            NetSkeinMultipartForm(boundary: boundary, parts: parts)
-        }
+    mutating func build() -> NetSkeinMultipartForm {
+        NetSkeinMultipartForm(boundary: boundary, parts: parts)
     }
 }
