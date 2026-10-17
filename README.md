@@ -5,6 +5,7 @@ A high-performance, asynchronous HTTP client library for Swift, engineered from 
 Built natively on top of **SwiftNIO** and `async-http-client`, NetSkein provides an elegant, fluent syntax builder interface that abstracts away low-level socket management while maintaining throughput efficiency.
 
 > **Why the name Skein?**
+>
 > The word _Skein_ holds a double meaning that perfectly embodies this library:
 >
 > 1. It represents a beautifully coiled, orderly bundle of threads. Mirroring how NetSkein orchestrates complex asynchronous network streams.
