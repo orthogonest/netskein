@@ -9,16 +9,15 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
 
-public final class NetSkeinDownloadDelegate: @unchecked Sendable {
+public final class NetSkeinDownloadDelegate: Sendable {
     private let fileHandle: FileHandle
     private let eventLoop: EventLoop
-    private let lock: NIOLock
-    private var responseHead: HTTPResponseHead?
+    private let responseHead: NIOLockedValueBox<HTTPResponseHead?>
 
     public init(fileHandle: FileHandle, eventLoop: EventLoop) {
         self.fileHandle = fileHandle
         self.eventLoop = eventLoop
-        lock = NIOLock()
+        responseHead = NIOLockedValueBox(nil)
     }
 }
 
@@ -26,8 +25,8 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     public typealias Response = HTTPResponseHead
 
     public func didReceiveHead(task: HTTPClient.Task<Response>, _ head: HTTPResponseHead) -> EventLoopFuture<Void> {
-        lock.withLock {
-            self.responseHead = head
+        responseHead.withLockedValue { responseHead in
+            responseHead = head
         }
 
         guard head.status == .ok else {
@@ -38,23 +37,30 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     }
 
     public func didReceiveBodyPart(task: HTTPClient.Task<Response>, _ buffer: ByteBuffer) -> EventLoopFuture<Void> {
-        var mutableBuffer = buffer
-        guard let data = mutableBuffer.readData(length: mutableBuffer.readableBytes) else {
-            return task.eventLoop.makeSucceededVoidFuture()
-        }
+        buffer.withUnsafeReadableBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else {
+                return task.eventLoop.makeSucceededVoidFuture()
+            }
 
-        do {
-            try fileHandle.write(contentsOf: data)
-            return task.eventLoop.makeSucceededVoidFuture()
-        } catch {
-            return task.eventLoop.makeFailedFuture(error)
+            let data = Data(
+                bytesNoCopy: UnsafeMutableRawPointer(mutating: baseAddress),
+                count: bytes.count,
+                deallocator: .none
+            )
+
+            do {
+                try fileHandle.write(contentsOf: data)
+                return task.eventLoop.makeSucceededVoidFuture()
+            } catch {
+                return task.eventLoop.makeFailedFuture(error)
+            }
         }
     }
 
     public func didFinishRequest(task _: HTTPClient.Task<Response>) throws -> Response {
         try fileHandle.close()
 
-        guard let head = lock.withLock({ self.responseHead }) else {
+        guard let head = responseHead.withLockedValue({ $0 }) else {
             throw NetSkeinError.emptyResponseBody
         }
 
