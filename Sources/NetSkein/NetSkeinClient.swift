@@ -15,7 +15,7 @@ public final class NetSkeinClient: Sendable {
         underlyingClient: HTTPClient,
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: NetSkeinCookieJar? = nil,
-        logger: Logger = Logger(label: "com.netglide.network")
+        logger: Logger = Logger(label: Label.identifier)
     ) {
         self.underlyingClient = underlyingClient
         self.defaultHeaders = defaultHeaders
@@ -28,7 +28,7 @@ public final class NetSkeinClient: Sendable {
         self.init(underlyingClient: client, defaultHeaders: defaultHeaders)
     }
 
-    public static var builder: NetSkeinClientBuilder {
+    public static func builder() -> NetSkeinClientBuilder {
         NetSkeinClientBuilder()
     }
 }
@@ -71,7 +71,7 @@ public final class NetSkeinClientBuilder {
     private var cookieJar: NetSkeinCookieJar?
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool = false
-    private var logger: Logger = .init(label: "com.netglide.network")
+    private var logger: Logger = .init(label: Label.identifier)
 
     public init() {}
 

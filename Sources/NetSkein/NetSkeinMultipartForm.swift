@@ -1,4 +1,10 @@
-import Foundation
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+
+import NIOConcurrencyHelpers
 import NIOCore
 
 public struct NetSkeinMultipartForm: Sendable {
@@ -12,7 +18,7 @@ public struct NetSkeinMultipartForm: Sendable {
     let boundary: String
     let parts: [Part]
 
-    public static var builder: NetSkeinMultipartFormBuilder {
+    public static func builder() -> NetSkeinMultipartFormBuilder {
         NetSkeinMultipartFormBuilder()
     }
 }
@@ -40,12 +46,12 @@ public extension NetSkeinMultipartForm {
 
 public final class NetSkeinMultipartFormBuilder {
     private let boundary: String
-    private let mutex: Mutex
+    private let lock: NIOLock
     private var parts: [NetSkeinMultipartForm.Part]
 
     public init() {
         boundary = "NetSkeinBoundary-\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
-        mutex = Mutex()
+        lock = NIOLock()
         parts = []
     }
 }
@@ -53,7 +59,7 @@ public final class NetSkeinMultipartFormBuilder {
 public extension NetSkeinMultipartFormBuilder {
     @discardableResult
     func text(name: String, value: String) -> Self {
-        mutex.withLock {
+        lock.withLock {
             var buffer = ByteBufferAllocator().buffer(capacity: value.utf8.count)
             buffer.writeString(value)
             parts.append(NetSkeinMultipartForm.Part(
@@ -68,7 +74,7 @@ public extension NetSkeinMultipartFormBuilder {
 
     @discardableResult
     func file(name: String, filename: String, contentType: String, body: ByteBuffer) -> Self {
-        mutex.withLock {
+        lock.withLock {
             parts.append(NetSkeinMultipartForm.Part(
                 name: name,
                 filename: filename,
@@ -80,7 +86,7 @@ public extension NetSkeinMultipartFormBuilder {
     }
 
     func build() -> NetSkeinMultipartForm {
-        mutex.withLock {
+        lock.withLock {
             NetSkeinMultipartForm(boundary: boundary, parts: parts)
         }
     }
