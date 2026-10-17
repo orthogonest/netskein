@@ -8,7 +8,16 @@ import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
 
-public final class RequestBuilder {
+public protocol HTTPMethodRequest: Sendable {}
+public protocol HTTPMethodWithBody: HTTPMethodRequest {}
+
+public struct GETRequest: HTTPMethodRequest {}
+public struct POSTRequest: HTTPMethodRequest, HTTPMethodWithBody {}
+public struct PUTRequest: HTTPMethodRequest, HTTPMethodWithBody {}
+public struct PATCHRequest: HTTPMethodRequest, HTTPMethodWithBody {}
+public struct DELETERequest: HTTPMethodRequest {}
+
+public struct RequestBuilder<Method: HTTPMethodRequest> {
     private let client: NetSkeinClient
     private var method: HTTPMethod
     private var url: String
@@ -30,8 +39,8 @@ public final class RequestBuilder {
     }
 }
 
-extension RequestBuilder {
-    private func getCookie() -> String? {
+private extension RequestBuilder {
+    func getCookie() -> String? {
         guard let jar = client.cookieJar,
               let urlObject = URL(string: url),
               let host = urlObject.host,
@@ -39,7 +48,7 @@ extension RequestBuilder {
         return cookieValue
     }
 
-    private func setCookie(cookieHeaders: [String]) {
+    func setCookie(cookieHeaders: [String]) {
         guard let jar = client.cookieJar,
               let urlObject = URL(string: url),
               let host = urlObject.host else { return }
@@ -56,23 +65,13 @@ extension RequestBuilder {
 
 public extension RequestBuilder {
     @discardableResult
-    func header(_ name: String, _ value: String) -> Self {
+    mutating func header(_ name: String, _ value: String) -> Self {
         headers.add(name: name, value: value)
         return self
     }
 
     @discardableResult
-    func json(_ bodyObject: some Encodable) throws -> Self {
-        let data = try JSONEncoder().encode(bodyObject)
-        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-        buffer.writeBytes(data)
-        body = .byteBuffer(buffer)
-        headers.add(name: "Content-Type", value: "application/json")
-        return self
-    }
-
-    @discardableResult
-    func query(_ items: [String: String]) -> Self {
+    mutating func query(_ items: [String: String]) -> Self {
         guard var components = URLComponents(string: url) else { return self }
 
         var queryItems = components.queryItems ?? []
@@ -89,7 +88,25 @@ public extension RequestBuilder {
     }
 
     @discardableResult
-    func form(_ fields: [String: String]) -> Self {
+    mutating func timeout(_ duration: TimeAmount) -> Self {
+        timeout = duration
+        return self
+    }
+}
+
+public extension RequestBuilder where Method: HTTPMethodWithBody {
+    @discardableResult
+    mutating func json(_ bodyObject: some Encodable) throws -> Self {
+        let data = try JSONEncoder().encode(bodyObject)
+        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+        buffer.writeBytes(data)
+        body = .byteBuffer(buffer)
+        headers.add(name: "Content-Type", value: "application/json")
+        return self
+    }
+
+    @discardableResult
+    mutating func form(_ fields: [String: String]) -> Self {
         var components = URLComponents()
         components.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
 
@@ -106,13 +123,7 @@ public extension RequestBuilder {
     }
 
     @discardableResult
-    func timeout(_ duration: TimeAmount) -> Self {
-        timeout = duration
-        return self
-    }
-
-    @discardableResult
-    func multipart(_ form: NetSkeinMultipartForm) -> Self {
+    mutating func multipart(_ form: NetSkeinMultipartForm) -> Self {
         let boundary = form.boundary
 
         var multipartBuffer = ByteBufferAllocator().buffer(capacity: form.estimatedLength)
@@ -147,7 +158,7 @@ public extension RequestBuilder {
     }
 
     @discardableResult
-    func stream(fileAtPath path: String, chunkSize: Int = 64 * 1024) -> Self {
+    mutating func stream(fileAtPath path: String, chunkSize: Int = 64 * 1024) -> Self {
         let eventLoop = client.underlyingClient.eventLoopGroup.next()
 
         guard let fileHandle = FileHandle(forReadingAtPath: path) else {
@@ -170,10 +181,14 @@ public extension RequestBuilder {
 
         return self
     }
+}
 
+public extension RequestBuilder {
     func send() async throws -> NetSkeinResponse {
+        var activeHeaders = headers
+
         let requestID = UUID().uuidString
-        headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
+        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
 
         var clientLogger = client.logger
         clientLogger[metadataKey: "request_id"] = .string(requestID)
@@ -183,7 +198,7 @@ public extension RequestBuilder {
         clientLogger.info("Initiating outbound network request")
 
         if let cookieValue = getCookie() {
-            headers.replaceOrAdd(name: "Cookie", value: cookieValue)
+            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
 
         let request = try HTTPClient.Request(url: url, method: method, headers: headers, body: body)
@@ -217,8 +232,10 @@ public extension RequestBuilder {
     }
 
     func download(toFileAtPath path: String) async throws {
+        var activeHeaders = headers
+
         let requestID = UUID().uuidString
-        headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
+        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
 
         var clientLogger = client.logger
         clientLogger[metadataKey: "request_id"] = .string(requestID)
@@ -228,7 +245,7 @@ public extension RequestBuilder {
         clientLogger.info("Initiating outbound streaming download request")
 
         if let cookieValue = getCookie() {
-            headers.replaceOrAdd(name: "Cookie", value: cookieValue)
+            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
 
         fileManager.createFile(atPath: path, contents: nil)

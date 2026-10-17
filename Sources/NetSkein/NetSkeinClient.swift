@@ -34,23 +34,23 @@ public final class NetSkeinClient: Sendable {
 }
 
 public extension NetSkeinClient {
-    func get(_ url: String) -> RequestBuilder {
+    func get(_ url: String) -> RequestBuilder<GETRequest> {
         RequestBuilder(client: self, method: .GET, url: url)
     }
 
-    func post(_ url: String) -> RequestBuilder {
+    func post(_ url: String) -> RequestBuilder<POSTRequest> {
         RequestBuilder(client: self, method: .POST, url: url)
     }
 
-    func put(_ url: String) -> RequestBuilder {
+    func put(_ url: String) -> RequestBuilder<PUTRequest> {
         RequestBuilder(client: self, method: .PUT, url: url)
     }
 
-    func patch(_ url: String) -> RequestBuilder {
+    func patch(_ url: String) -> RequestBuilder<PATCHRequest> {
         RequestBuilder(client: self, method: .PATCH, url: url)
     }
 
-    func delete(_ url: String) -> RequestBuilder {
+    func delete(_ url: String) -> RequestBuilder<DELETERequest> {
         RequestBuilder(client: self, method: .DELETE, url: url)
     }
 
