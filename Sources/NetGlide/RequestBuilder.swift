@@ -10,6 +10,7 @@ public final class RequestBuilder {
     private var headers: HTTPHeaders
     private var body: HTTPClient.Body?
     private var timeout: TimeAmount?
+    private let fileManager: FileManager
 
     public init(
         client: NetGlideClient,
@@ -20,6 +21,31 @@ public final class RequestBuilder {
         self.method = method
         self.url = url
         headers = client.defaultHeaders
+        fileManager = .default
+    }
+}
+
+extension RequestBuilder {
+    private func getCookie() -> String? {
+        guard let jar = client.cookieJar,
+              let urlObject = URL(string: url),
+              let host = urlObject.host,
+              let cookieValue = jar.cookieHeader(for: host) else { return nil }
+        return cookieValue
+    }
+
+    private func setCookie(cookieHeaders: [String]) {
+        guard let jar = client.cookieJar,
+              let urlObject = URL(string: url),
+              let host = urlObject.host else { return }
+
+        for cookie in cookieHeaders {
+            let components = cookie.components(separatedBy: ";")
+            guard let parts = components.first?.components(separatedBy: "="), parts.count == 2 else { continue }
+            let name = parts[0].trimmingCharacters(in: .whitespaces)
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            jar.setCookie(host: host, name: name, value: value)
+        }
     }
 }
 
@@ -151,30 +177,19 @@ public extension RequestBuilder {
 
         clientLogger.info("Initiating outbound network request")
 
-        if let jar = client.cookieJar,
-           let urlObject = URL(string: url),
-           let host = urlObject.host,
-           let cookieValue = jar.cookieHeader(for: host)
-        {
+        if let cookieValue = getCookie() {
             headers.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
 
-        let request = try HTTPClient.Request(
-            url: url,
-            method: method,
-            headers: headers,
-            body: body
-        )
-
+        let request = try HTTPClient.Request(url: url, method: method, headers: headers, body: body)
         let deadline = timeout.map { NIODeadline.now() + $0 }
         let startTime = DispatchTime.now()
-        let response: HTTPClient.Response
 
         do {
-            response = try await client.underlyingClient.execute(request: request, deadline: deadline).get()
+            let response = try await client.underlyingClient.execute(request: request, deadline: deadline).get()
 
             let endTime = DispatchTime.now()
-            let duration = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000_000
+            let duration = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / NanoSeconds.toSeconds
             let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
 
             clientLogger.info("Request completed successfully", metadata: [
@@ -182,6 +197,11 @@ public extension RequestBuilder {
                 "status_code": .string("\(response.status.code)"),
                 "duration_seconds": .string(String(format: "%.4f", duration)),
             ])
+
+            let cookieHeaders = response.headers["Set-Cookie"]
+            setCookie(cookieHeaders: cookieHeaders)
+
+            return NetGlideResponse(underlyingResponse: response)
         } catch {
             clientLogger.error("Network request failed", metadata: [
                 "request_id": .string(requestID),
@@ -189,22 +209,64 @@ public extension RequestBuilder {
             ])
             throw error
         }
+    }
 
-        if let jar = client.cookieJar,
-           let urlObject = URL(string: url),
-           let host = urlObject.host
-        {
-            let setCookieHeaders = response.headers["Set-Cookie"]
-            for cookie in setCookieHeaders {
-                let components = cookie.components(separatedBy: ";")
-                guard let parts = components.first?.components(separatedBy: "="),
-                      parts.count == 2 else { continue }
-                let name = parts[0].trimmingCharacters(in: .whitespaces)
-                let value = parts[1].trimmingCharacters(in: .whitespaces)
-                jar.setCookie(host: host, name: name, value: value)
-            }
+    func download(toFileAtPath path: String) async throws {
+        let requestID = UUID().uuidString
+        headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
+
+        var clientLogger = client.logger
+        clientLogger[metadataKey: "request_id"] = .string(requestID)
+        clientLogger[metadataKey: "http_method"] = .string(method.rawValue)
+        clientLogger[metadataKey: "url"] = .string(url)
+
+        clientLogger.info("Initiating outbound streaming download request")
+
+        if let cookieValue = getCookie() {
+            headers.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
 
-        return NetGlideResponse(underlyingResponse: response)
+        fileManager.createFile(atPath: path, contents: nil)
+        guard let fileHandle = FileHandle(forWritingAtPath: path) else {
+            throw NetGlideError.fileNotFound(path)
+        }
+
+        let request = try HTTPClient.Request(url: url, method: method, headers: headers, body: body)
+        let deadline = timeout.map { NIODeadline.now() + $0 }
+        let eventLoop = client.underlyingClient.eventLoopGroup.next()
+        let startTime = DispatchTime.now()
+
+        let delegate = NetGlideDownloadDelegate(fileHandle: fileHandle, eventLoop: eventLoop)
+
+        do {
+            let task = client.underlyingClient.execute(
+                request: request,
+                delegate: delegate,
+                eventLoop: .indifferent,
+                deadline: deadline,
+                logger: client.logger
+            )
+
+            let responseHead = try await task.futureResult.get()
+
+            let endTime = DispatchTime.now()
+            let duration = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / NanoSeconds.toSeconds
+            let activeResponseID = responseHead.headers["X-Request-ID"].first ?? requestID
+
+            clientLogger.info("Streaming download completed successfully", metadata: [
+                "request_id": .string(activeResponseID),
+                "status_code": .string("\(responseHead.status.code)"),
+                "duration_seconds": .string(String(format: "%.4f", duration)),
+            ])
+
+            let cookieHeaders = responseHead.headers["Set-Cookie"]
+            setCookie(cookieHeaders: cookieHeaders)
+        } catch {
+            clientLogger.error("Streaming download request failed", metadata: [
+                "request_id": .string(requestID),
+                "error_description": .string(error.localizedDescription),
+            ])
+            throw error
+        }
     }
 }
