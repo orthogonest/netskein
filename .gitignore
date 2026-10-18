@@ -4,6 +4,8 @@
 Package.resolved
 xcuserdata/
 DerivedData/
+/Examples/.build
+/Examples/Package.resolved
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
