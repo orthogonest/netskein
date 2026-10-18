@@ -52,7 +52,22 @@ extension NetSkeinClient {
         RequestBuilder<DELETERequest>(client: self, method: .DELETE, url: url)
     }
 
-    public func shutdown() async throws { try await underlyingClient.shutdown() }
+    public func shutdown() async throws(NetSkeinError) {
+        do {
+            try await underlyingClient.shutdown()
+        } catch {
+            logger.error(
+                "Failed to safely shutdown NetSkein underlying HTTP client: \(error.localizedDescription)"
+            )
+
+            throw NetSkeinError.custom(
+                kind: .ioFailure,
+                message:
+                    "Failed to release network client system resources and event loops cleanly.",
+                underlyingError: error
+            )
+        }
+    }
 }
 
 public struct NetSkeinClientBuilder: Sendable {

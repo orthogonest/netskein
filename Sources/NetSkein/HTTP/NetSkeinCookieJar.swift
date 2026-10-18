@@ -22,5 +22,7 @@ extension NetSkeinCookieJar {
         }
     }
 
-    public func clear() { storage.withLockedValue { cookies in cookies.removeAll() } }
+    public func clear() {
+        storage.withLockedValue { cookies in cookies.removeAll() }
+    }
 }
