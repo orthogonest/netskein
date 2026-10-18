@@ -2,5 +2,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question & Support
-    url: https://github.com/orthogonest/netskein
+    url: https://github.com/orthogonest/netskein/discussions
     about: Ask questions or get architecture support in GitHub Discussions.
