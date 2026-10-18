@@ -1,6 +1,8 @@
 import AsyncHTTPClient
 
-public struct NetSkeinProxy: Sendable { let underlyingProxy: HTTPClient.Configuration.Proxy }
+public struct NetSkeinProxy: Sendable {
+    let underlyingProxy: HTTPClient.Configuration.Proxy
+}
 
 extension NetSkeinProxy {
     public static func http(host: String, port: Int) -> Self {

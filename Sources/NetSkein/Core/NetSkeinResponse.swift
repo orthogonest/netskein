@@ -22,8 +22,8 @@ extension NetSkeinResponse {
     public var headers: HTTPHeaders { underlyingResponse.headers }
 
     @discardableResult
-    public func errorForStatus() throws -> Self {
-        if status.code < 200 || status.code >= 300 { throw NetSkeinError.badStatus(status) }
+    public func errorForStatus() throws(NetSkeinError) -> Self {
+        guard status.code >= 200 && status.code < 300 else { throw .badStatus(status) }
         return self
     }
 
@@ -34,11 +34,20 @@ extension NetSkeinResponse {
         return body.getString(at: body.readerIndex, length: body.readableBytes)
     }
 
-    public func json<T: Decodable>(_: T.Type, decoder: JSONDecoder = JSONDecoder()) throws -> T {
-        guard let body = bytes(), body.readableBytes > 0 else {
-            throw NetSkeinError.emptyResponseBody
-        }
+    public func json<T: Decodable>(
+        _: T.Type,
+        decoder: JSONDecoder = JSONDecoder()
+    ) throws(NetSkeinError) -> T {
+        guard let body = bytes(), body.readableBytes > 0 else { throw .simple(.emptyResponseBody) }
 
-        return try decoder.decode(T.self, from: body)
+        do {
+            return try decoder.decode(T.self, from: body)
+        } catch {
+            throw .custom(
+                kind: .invalidPayload,
+                message: "Failed to decode JSON payload: \(error.localizedDescription)",
+                underlyingError: error
+            )
+        }
     }
 }

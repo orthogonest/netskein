@@ -88,13 +88,21 @@ extension RequestBuilder {
 
 extension RequestBuilder where Method: HTTPMethodWithBody {
     @discardableResult
-    public mutating func json(_ bodyObject: some Encodable) throws -> Self {
-        let data = try JSONEncoder().encode(bodyObject)
-        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-        buffer.writeBytes(data)
-        body = .byteBuffer(buffer)
-        headers.add(name: "Content-Type", value: "application/json")
-        return self
+    public mutating func json(_ bodyObject: some Encodable) throws(NetSkeinError) -> Self {
+        do {
+            let data = try JSONEncoder().encode(bodyObject)
+            var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+            buffer.writeBytes(data)
+            body = .byteBuffer(buffer)
+            headers.add(name: "Content-Type", value: "application/json")
+            return self
+        } catch {
+            throw .custom(
+                kind: .invalidPayload,
+                message: "Failed to decode JSON request: \(error.localizedDescription)",
+                underlyingError: error
+            )
+        }
     }
 
     @discardableResult
@@ -163,7 +171,15 @@ extension RequestBuilder where Method: HTTPMethodWithBody {
         let eventLoop = client.underlyingClient.eventLoopGroup.next()
 
         guard let fileHandle = FileHandle(forReadingAtPath: path) else {
-            body = .stream { _ in eventLoop.makeFailedFuture(NetSkeinError.fileNotFound(path)) }
+            body = .stream { _ in
+                eventLoop.makeFailedFuture(
+                    NetSkeinError.custom(
+                        kind: .ioFailure,
+                        message:
+                            "Unable to initiate outbound data stream. File not found or inaccessible for reading at path: \(path)."
+                    )
+                )
+            }
             return self
         }
 
@@ -183,7 +199,7 @@ extension RequestBuilder where Method: HTTPMethodWithBody {
 }
 
 extension RequestBuilder {
-    public func send() async throws -> NetSkeinResponse {
+    public func send() async throws(NetSkeinError) -> NetSkeinResponse {
         var activeHeaders = headers
 
         let requestID = UUID().uuidString
@@ -200,7 +216,21 @@ extension RequestBuilder {
             activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
 
-        let request = try HTTPClient.Request(url: url, method: method, headers: headers, body: body)
+        let request: HTTPClient.Request
+        do {
+            request = try HTTPClient.Request(
+                url: url,
+                method: method,
+                headers: activeHeaders,
+                body: body
+            )
+        } catch {
+            throw .custom(
+                kind: .invalidPayload,
+                message: "Failed to construct HTTP request payload: \(error.localizedDescription)",
+                underlyingError: error
+            )
+        }
 
         let deadline = timeout.map { NIODeadline.now() + $0 }
         let startTime = DispatchTime.now()
@@ -236,11 +266,15 @@ extension RequestBuilder {
                     "error_description": .string(error.localizedDescription),
                 ]
             )
-            throw error
+            throw .custom(
+                kind: .networkFailure,
+                message: "Network execution failed: \(error.localizedDescription)",
+                underlyingError: error
+            )
         }
     }
 
-    public func download(toFileAtPath path: String) async throws {
+    public func download(toFileAtPath path: String) async throws(NetSkeinError) {
         var activeHeaders = headers
 
         let requestID = UUID().uuidString
@@ -259,10 +293,29 @@ extension RequestBuilder {
 
         fileManager.createFile(atPath: path, contents: nil)
         guard let fileHandle = FileHandle(forWritingAtPath: path) else {
-            throw NetSkeinError.fileNotFound(path)
+            throw .custom(
+                kind: .ioFailure,
+                message:
+                    "Unable to initiate download data stream. File could not be created or written to at the specified path: \(path)."
+            )
         }
 
-        let request = try HTTPClient.Request(url: url, method: method, headers: headers, body: body)
+        let request: HTTPClient.Request
+        do {
+            request = try HTTPClient.Request(
+                url: url,
+                method: method,
+                headers: activeHeaders,
+                body: body
+            )
+        } catch {
+            throw .custom(
+                kind: .invalidPayload,
+                message:
+                    "Failed to construct download request payload: \(error.localizedDescription)",
+                underlyingError: error
+            )
+        }
 
         let deadline = timeout.map { NIODeadline.now() + $0 }
         let eventLoop = client.underlyingClient.eventLoopGroup.next()
@@ -306,7 +359,11 @@ extension RequestBuilder {
                     "error_description": .string(error.localizedDescription),
                 ]
             )
-            throw error
+            throw .custom(
+                kind: .networkFailure,
+                message: "Streaming download failed: \(error.localizedDescription)",
+                underlyingError: error
+            )
         }
     }
 }

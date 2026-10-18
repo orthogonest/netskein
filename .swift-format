@@ -28,7 +28,7 @@
   },
   "prioritizeKeepingFunctionOutputTogether" : true,
   "reflowMultilineStringLiterals" : "never",
-  "respectsExistingLineBreaks" : false,
+  "respectsExistingLineBreaks" : true,
   "rules" : {
     "AllPublicDeclarationsHaveDocumentation" : false,
     "AlwaysUseLiteralForEmptyCollectionInit" : true,

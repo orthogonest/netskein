@@ -30,7 +30,7 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     ) -> EventLoopFuture<Void> {
         responseHead.withLockedValue { responseHead in responseHead = head }
 
-        guard head.status == .ok else {
+        guard head.status.code >= 200 && head.status.code < 300 else {
             return task.eventLoop.makeFailedFuture(NetSkeinError.badStatus(head.status))
         }
 
@@ -55,15 +55,33 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
             do {
                 try fileHandle.write(contentsOf: data)
                 return task.eventLoop.makeSucceededVoidFuture()
-            } catch { return task.eventLoop.makeFailedFuture(error) }
+            } catch {
+                let ioError = NetSkeinError.custom(
+                    kind: .ioFailure,
+                    message:
+                        "Disk write failed during streaming body allocation: \(error.localizedDescription)",
+                    underlyingError: error
+                )
+                return task.eventLoop.makeFailedFuture(ioError)
+            }
         }
     }
 
-    public func didFinishRequest(task _: HTTPClient.Task<Response>) throws -> Response {
-        try fileHandle.close()
+    public func didFinishRequest(
+        task _: HTTPClient.Task<Response>
+    ) throws(NetSkeinError) -> Response {
+        do {
+            try fileHandle.close()
+        } catch {
+            throw NetSkeinError.custom(
+                kind: .ioFailure,
+                message: "Failed to securely close and flush the downloaded file handle on disk.",
+                underlyingError: error
+            )
+        }
 
         guard let head = responseHead.withLockedValue({ $0 }) else {
-            throw NetSkeinError.emptyResponseBody
+            throw .simple(.emptyResponseBody)
         }
 
         return head
