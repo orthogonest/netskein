@@ -1,13 +1,13 @@
+import AsyncHTTPClient
+import NIOConcurrencyHelpers
+import NIOCore
+import NIOHTTP1
+
 #if canImport(FoundationEssentials)
     import FoundationEssentials
 #else
     import Foundation
 #endif
-
-import AsyncHTTPClient
-import NIOConcurrencyHelpers
-import NIOCore
-import NIOHTTP1
 
 public final class NetSkeinDownloadDelegate: Sendable {
     private let fileHandle: FileHandle
@@ -24,10 +24,11 @@ public final class NetSkeinDownloadDelegate: Sendable {
 extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
     public typealias Response = HTTPResponseHead
 
-    public func didReceiveHead(task: HTTPClient.Task<Response>, _ head: HTTPResponseHead) -> EventLoopFuture<Void> {
-        responseHead.withLockedValue { responseHead in
-            responseHead = head
-        }
+    public func didReceiveHead(
+        task: HTTPClient.Task<Response>,
+        _ head: HTTPResponseHead
+    ) -> EventLoopFuture<Void> {
+        responseHead.withLockedValue { responseHead in responseHead = head }
 
         guard head.status == .ok else {
             return task.eventLoop.makeFailedFuture(NetSkeinError.badStatus(head.status))
@@ -36,7 +37,10 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
         return task.eventLoop.makeSucceededVoidFuture()
     }
 
-    public func didReceiveBodyPart(task: HTTPClient.Task<Response>, _ buffer: ByteBuffer) -> EventLoopFuture<Void> {
+    public func didReceiveBodyPart(
+        task: HTTPClient.Task<Response>,
+        _ buffer: ByteBuffer
+    ) -> EventLoopFuture<Void> {
         buffer.withUnsafeReadableBytes { bytes in
             guard let baseAddress = bytes.baseAddress else {
                 return task.eventLoop.makeSucceededVoidFuture()
@@ -51,9 +55,7 @@ extension NetSkeinDownloadDelegate: HTTPClientResponseDelegate {
             do {
                 try fileHandle.write(contentsOf: data)
                 return task.eventLoop.makeSucceededVoidFuture()
-            } catch {
-                return task.eventLoop.makeFailedFuture(error)
-            }
+            } catch { return task.eventLoop.makeFailedFuture(error) }
         }
     }
 
