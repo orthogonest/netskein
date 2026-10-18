@@ -8,9 +8,10 @@ struct GetHTML {
 
         do {
             let response = try await client.get("https://apple.com")
+                .maxResponseSize(1024 * 1024)  // 1 MB
                 .send()
                 .errorForStatus()
-                .text(upTo: 1024 * 1024)  // 1 MB
+                .text()
 
             print("HTTP Body Content:")
             print(response ?? "Empty HTTP body")
