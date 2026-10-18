@@ -64,16 +64,9 @@ import PackageDescription
 
 let package = Package(
     name: "MyApp",
-    dependencies: [
-        .package(url: "https://github.com/orthogonest/netskein", from: "0.1.0"),
-    ],
+    dependencies: [.package(url: "https://github.com/orthogonest/netskein", from: "0.1.0")],
     targets: [
-        .target(
-            name: "MyApp",
-            dependencies: [
-                .product(name: "NetSkein", package: "netskein"),
-            ]
-        ),
+        .target(name: "MyApp", dependencies: [.product(name: "NetSkein", package: "netskein")])
     ]
 )
 ```
@@ -93,22 +86,16 @@ struct UserProfile: Decodable {
 }
 
 /// Instantiate client container utilizing production default settings
-let client = NetSkeinClient.builder()
-    .connectTimeout(.seconds(5))
-    .build()
+let client = NetSkeinClient.builder().connectTimeout(.seconds(5)).build()
 
 do {
     let profile = try await client.get("https://example.com")
-        .header("Authorization", "Bearer your_token_here")
-        .query(["version": "2.0"])
-        .send()
-        .errorForStatus() // Validate 2xx boundaries
-        .json(UserProfile.self) // Decode safely and non-destructively
+        .header("Authorization", "Bearer your_token_here").query(["version": "2.0"]).send()
+        .errorForStatus()  // Validate 2xx boundaries
+        .json(UserProfile.self)  // Decode safely and non-destructively
 
     print("Welcome back, \(profile.username)!")
-} catch {
-    print("API Error: \(error.localizedDescription)")
-}
+} catch { print("API Error: \(error.localizedDescription)") }
 ```
 
 ### 2. High-Performance Symmetrical Streaming (Zero OOM Spikes)
@@ -118,8 +105,7 @@ do {
 ```swift
 /// Stream a 2 GB video asset from the local disk directly over the network socket
 let uploadResponse = try await client.post("https://example.com")
-    .stream(fileAtPath: "/Users/developer/Movies/holiday_4k.mp4")
-    .send()
+    .stream(fileAtPath: "/Users/developer/Movies/holiday_4k.mp4").send()
 ```
 
 #### Inbound Download Stream:
@@ -133,14 +119,11 @@ try await client.get("https://example.com")
 ### 3. Thread-Safe Multipart Form Assembly
 
 ```swift
-let formPayload = NetSkeinMultipartForm.builder
-    .text(name: "caption", value: "Summer Vacation 2026")
+let formPayload = NetSkeinMultipartForm.builder.text(name: "caption", value: "Summer Vacation 2026")
     .file(name: "photo", filename: "beach.jpg", contentType: "image/jpeg", body: rawByteBuffer)
-    .build() // Locked into a pure immutable, Sendable struct payload container
+    .build()  // Locked into a pure immutable, Sendable struct payload container
 
-let response = try await client.post("https://example.com")
-    .multipart(formPayload)
-    .send()
+let response = try await client.post("https://example.com").multipart(formPayload).send()
 ```
 
 ## License
