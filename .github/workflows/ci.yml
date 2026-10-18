@@ -10,10 +10,25 @@ on:
       - "Makefile"
       - "Package.swift"
       - "Package.resolved"
+      - ".swift-format"
+      - ".pre-commit-config.yaml"
 
 jobs:
+  lint-format:
+    name: Lint + Format
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Host Swift Version
+        run: swift --version
+
+      - name: Run Strict Swift Format Pipeline
+        uses: pre-commit/action@v3.0.1
+
   build-test:
-    name: Build + Tests (Swift ${{ matrix.swift }})
+    name: Build + Tests
     runs-on: macos-latest
     steps:
       - name: Checkout repository
@@ -28,10 +43,8 @@ jobs:
           path: |
             ~/.swiftpm
             .build
-          key: >-
-            ${{ runner.os }}-swiftpm-${{ matrix.swift }}-${{
-            hashFiles('**/Package.resolved') }}
-          restore-keys: ${{ runner.os }}-swiftpm-${{ matrix.swift }}-
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-swiftpm-
 
       - name: Resolve Dependencies
         run: |
