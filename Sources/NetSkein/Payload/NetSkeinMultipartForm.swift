@@ -56,7 +56,8 @@ public struct NetSkeinMultipartFormBuilder: Sendable {
 extension NetSkeinMultipartFormBuilder {
     @discardableResult
     public mutating func text(name: String, value: String) -> Self {
-        var buffer = ByteBufferAllocator().buffer(capacity: value.utf8.count)
+        let allocator = ByteBufferAllocator()
+        var buffer = allocator.buffer(capacity: value.utf8.count)
         buffer.writeString(value)
         parts.append(
             NetSkeinMultipartForm.Part(name: name, filename: nil, contentType: nil, body: buffer)

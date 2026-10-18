@@ -9,28 +9,44 @@ import NIOHTTP1
 #endif
 
 public struct NetSkeinResponse: Sendable {
-    private let underlyingResponse: HTTPClient.Response
+    public let status: HTTPResponseStatus
+    public let headers: HTTPHeaders
+    private let body: ByteBuffer?
 
-    public init(underlyingResponse: HTTPClient.Response) {
-        self.underlyingResponse = underlyingResponse
+    public init(underlyingResponse: HTTPClientResponse, maxBytes: Int) async throws {
+        self.status = underlyingResponse.status
+        self.headers = underlyingResponse.headers
+
+        do {
+            let collectedBytes = try await underlyingResponse.body.collect(upTo: maxBytes)
+            self.body = collectedBytes.readableBytes > 0 ? collectedBytes : nil
+        } catch {
+            throw NetSkeinError.custom(
+                kind: .networkFailure,
+                message: "Failed to collect response body sequence: \(error.localizedDescription)",
+                underlyingError: error
+            )
+        }
     }
 }
 
 extension NetSkeinResponse {
-    public var status: HTTPResponseStatus { underlyingResponse.status }
-
-    public var headers: HTTPHeaders { underlyingResponse.headers }
-
     @discardableResult
     public func errorForStatus() throws(NetSkeinError) -> Self {
         guard status.code >= 200 && status.code < 300 else { throw .badStatus(status) }
         return self
     }
 
-    public func bytes() -> ByteBuffer? { underlyingResponse.body }
+    public func bytes(upTo maxLength: Int? = nil) -> ByteBuffer? {
+        guard let body else { return nil }
+        if let maxLength, body.readableBytes > maxLength {
+            return body.getSlice(at: body.readerIndex, length: maxLength)
+        }
+        return body
+    }
 
-    public func text() -> String? {
-        guard let body = bytes() else { return nil }
+    public func text(upTo maxLength: Int? = nil) -> String? {
+        guard let body = bytes(upTo: maxLength) else { return nil }
         return body.getString(at: body.readerIndex, length: body.readableBytes)
     }
 
@@ -38,7 +54,7 @@ extension NetSkeinResponse {
         _: T.Type,
         decoder: JSONDecoder = JSONDecoder()
     ) throws(NetSkeinError) -> T {
-        guard let body = bytes(), body.readableBytes > 0 else { throw .simple(.emptyResponseBody) }
+        guard let body = bytes() else { throw .simple(.emptyResponseBody) }
 
         do {
             return try decoder.decode(T.self, from: body)
