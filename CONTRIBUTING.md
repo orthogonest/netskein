@@ -1,13 +1,14 @@
 # Contributing
 
 Thank you for your interest in contributing to **NetSkein!**
+
 This project is engineered to deliver a high-performance, compile-time safe, and data-race-free asynchronous HTTP client for Swift 6.
 
 ## Local Development Setup
 
 To maintain strict code quality, uniformity, and safety boundaries across all platforms, we enforce an automated development workflow.
 
-NetSkein utilizes a declarative environment manager called **[mise](https://github.com/jdx/mise)** to automatically provision and synchronize the entire development toolchain, compilers, and local code-validation loops.
+NetSkein utilizes a declarative environment manager called **[mise][mise-repo]** to automatically provision and synchronize the entire development toolchain, compilers, and local code-validation loops.
 This ensures a seamless, identical setup across all contributor devices without manual operating system configuration.
 
 Please follow this guide to set up your local workspace environment.
@@ -49,11 +50,11 @@ When opening a new issue, please select the appropriate template:
 - **Feature Request**: Propose new ideas, enhancements, or architectural design changes for NetSkein.
 - **Documentation Update**: Report typos, missing instructions, or suggest clarity improvements to our existing markdown docs.
 
-_Note: For general questions, setup support, or architecture discussions, please use [GitHub Discussions](https://github.com/orthogonest/netskein/discussions) instead of opening an issue._
+_**Note:** For general questions, setup support, or architecture discussions, please use [GitHub Discussions][discussions] instead of opening an issue._
 
 ## Writing a Patch
 
-NetSkein follows a [Trunk-Based Development](https://trunkbaseddevelopment.com) workflow.
+NetSkein follows a [Trunk-Based Development][tbd] workflow.
 All short-lived feature branches must branch off and merge directly back into the core production trunk (`main`).
 
 A good NetSkein patch should be:
@@ -72,4 +73,8 @@ A good NetSkein patch should be:
 
 ## Legal
 
-By contributing to NetSkein, you agree that your contributions will be dual-licensed under the terms of both the **Apache License, Version 2.0** and the **MIT License**.
+By contributing to NetSkein, you agree that your contributions will be dual-licensed under the terms of both the **Apache License Version 2.0** and the **MIT License**.
+
+[mise-repo]: https://github.com/jdx/mise
+[discussions]: https://github.com/orthogonest/netskein/discussions
+[tbd]: https://trunkbaseddevelopment.com
