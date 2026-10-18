@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "netskein-examples",
-    platforms: [.macOS(.v11), .iOS(.v13), .tvOS(.v13), .watchOS(.v6), .macCatalyst(.v13)],
+    platforms: [.macOS(.v12), .iOS(.v15), .tvOS(.v15), .watchOS(.v8), .macCatalyst(.v15)],
     products: [
         .executable(name: "GetHTML", targets: ["GetHTML"]),
         .executable(name: "GetJSON", targets: ["GetJSON"]),

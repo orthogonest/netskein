@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "netskein",
-    platforms: [.macOS(.v11), .iOS(.v13), .tvOS(.v13), .watchOS(.v6), .macCatalyst(.v13)],
+    platforms: [.macOS(.v12), .iOS(.v15), .tvOS(.v15), .watchOS(.v8), .macCatalyst(.v15)],
     products: [.library(name: "NetSkein", targets: ["NetSkein"])],
     dependencies: [
         .package(url: "https://github.com/swift-server/async-http-client.git", "1.34.0"..<"1.36.2"),
