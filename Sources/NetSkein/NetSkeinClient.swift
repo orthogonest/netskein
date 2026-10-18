@@ -71,8 +71,9 @@ extension NetSkeinClient {
 }
 
 public struct NetSkeinClientBuilder: Sendable {
-    private var connectTimeout: TimeAmount?
-    private var readTimeout: TimeAmount?
+    private var connectTimeout: TimeAmount
+    private var readTimeout: TimeAmount
+    private var writeTimeout: TimeAmount
     private var defaultHeaders: HTTPHeaders
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider
     private var proxy: NetSkeinProxy?
@@ -85,6 +86,9 @@ public struct NetSkeinClientBuilder: Sendable {
     private var logger: Logger
 
     public init() {
+        connectTimeout = .seconds(10)
+        readTimeout = .seconds(30)
+        writeTimeout = .seconds(30)
         defaultHeaders = HTTPHeaders()
         eventLoopGroupProvider = .singleton
         redirectPolicy = .default
@@ -97,79 +101,98 @@ public struct NetSkeinClientBuilder: Sendable {
 
 extension NetSkeinClientBuilder {
     @discardableResult
-    public mutating func connectTimeout(_ duration: TimeAmount) -> Self {
-        connectTimeout = duration
-        return self
+    public func connectTimeout(_ duration: TimeAmount) -> Self {
+        var copy = self
+        copy.connectTimeout = duration
+        return copy
     }
 
     @discardableResult
-    public mutating func readTimeout(_ duration: TimeAmount) -> Self {
-        readTimeout = duration
-        return self
+    public func readTimeout(_ duration: TimeAmount) -> Self {
+        var copy = self
+        copy.readTimeout = duration
+        return copy
     }
 
     @discardableResult
-    public mutating func defaultHeaders(_ headers: HTTPHeaders) -> Self {
-        defaultHeaders = headers
-        return self
+    public func writeTimeout(_ duration: TimeAmount) -> Self {
+        var copy = self
+        copy.writeTimeout = duration
+        return copy
     }
 
     @discardableResult
-    public mutating func eventLoopGroupProvider(
+    public func defaultHeaders(_ headers: HTTPHeaders) -> Self {
+        var copy = self
+        copy.defaultHeaders = headers
+        return copy
+    }
+
+    @discardableResult
+    public func eventLoopGroupProvider(
         _ provider: HTTPClient.EventLoopGroupProvider
     ) -> Self {
-        eventLoopGroupProvider = provider
-        return self
+        var copy = self
+        copy.eventLoopGroupProvider = provider
+        return copy
     }
 
     @discardableResult
-    public mutating func proxy(_ proxy: NetSkeinProxy) -> Self {
-        self.proxy = proxy
-        return self
+    public func proxy(_ proxy: NetSkeinProxy) -> Self {
+        var copy = self
+        copy.proxy = proxy
+        return copy
     }
 
     @discardableResult
-    public mutating func redirectPolicy(_ policy: NetSkeinRedirectPolicy) -> Self {
-        redirectPolicy = policy
-        return self
+    public func redirectPolicy(_ policy: NetSkeinRedirectPolicy) -> Self {
+        var copy = self
+        copy.redirectPolicy = policy
+        return copy
     }
 
     @discardableResult
-    public mutating func automaticDecompression(_ enabled: Bool) -> Self {
-        automaticDecompression = enabled
-        return self
+    public func automaticDecompression(_ enabled: Bool) -> Self {
+        var copy = self
+        copy.automaticDecompression = enabled
+        return copy
     }
 
     @discardableResult
-    public mutating func decompressionLimit(
+    public func decompressionLimit(
         _ limit: NIOHTTPDecompression.DecompressionLimit
     ) -> Self {
-        decompressionLimit = limit
-        return self
+        var copy = self
+        copy.decompressionLimit = limit
+        return copy
     }
 
     @discardableResult
-    public mutating func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
-        cookieJar = jar
-        return self
+    public func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
+        var copy = self
+        copy.cookieJar = jar
+        return copy
     }
 
     @discardableResult
-    public mutating func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
-        tlsConfiguration = configuration
-        return self
+    public func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
+        var copy = self
+        copy.tlsConfiguration = configuration
+        return copy
     }
 
     @discardableResult
-    public mutating func acceptInvalidCertificates(_ accept: Bool) -> Self {
-        acceptInvalidCertificates = accept
-        return self
+    public func acceptInvalidCertificates(_ accept: Bool) -> Self {
+        var copy = self
+        copy.acceptInvalidCertificates = accept
+        return copy
     }
 
     @discardableResult
-    public mutating func logger(_ logger: Logger) -> Self {
-        self.logger = logger
-        return self
+    public func logger(_ logger: Logger) -> Self {
+        var copy = self
+        copy.logger = logger
+        return copy
     }
 
     public func build() -> NetSkeinClient {
@@ -177,7 +200,8 @@ extension NetSkeinClientBuilder {
 
         config.timeout = HTTPClient.Configuration.Timeout(
             connect: connectTimeout,
-            read: readTimeout
+            read: readTimeout,
+            write: writeTimeout
         )
 
         if let proxy { config.proxy = proxy.underlyingProxy }
