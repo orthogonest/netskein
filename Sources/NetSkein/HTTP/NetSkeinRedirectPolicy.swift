@@ -11,10 +11,8 @@ public enum NetSkeinRedirectPolicy: Sendable {
 extension NetSkeinRedirectPolicy {
     var underlyingConfiguration: HTTPClient.Configuration.RedirectConfiguration {
         switch self {
-        case .default:
-            return .follow(max: 5, allowCycles: false)
-        case .none:
-            return .disallow
+        case .default: return .follow(max: 5, allowCycles: false)
+        case .none: return .disallow
         case let .limited(limit):
             return limit > 0 ? .follow(max: limit, allowCycles: false) : .disallow
         }
