@@ -47,7 +47,37 @@ Tensions can occur between community members even when they try their best to co
 Not every conflict is a code of conduct violation.
 However, when a violation incident occurs, it is important to report it immediately.
 
-To report a possible violation, please create a confidential or flagged thread in our community **Discussions** space or reach out directly to the repository maintainers.
+To report a possible violation confidentially, please open a private report through our [GitHub Security Advisories][security-report-ref] page.
+This ensure the report is 100% private and visible only to the repository maintainers.
+
+### How to Fill the Security Advisory Form
+
+Since the GitHub Security Advisory form is designed for software vulnerabilities, please map your Code of Conduct report onto the fields using the following guidelines:
+
+1. **Title**: Set to `Code of Conduct Report: [Brief Summary]`
+2. **Summary**: Provide a one-sentence summary of the behavioral issue.
+3. **Details**: Copy and paste the **Report Content Template** below into this field.
+4. **Proof of Concept**: Paste direct markdown links to the violating comments, pull requests, or issue threads, along with any relevant quotes.
+5. **Impact**: List the community members or groups who are directly affected by this behavior.
+6. **Other Technical Fields** _(CVE, Affected Products, Severity, Weaknesses)_: You can safely leave these blank or at their default selections.
+
+### Report Content Template
+
+Please paste and complete this structure inside the **Details** field of your advisory:
+
+```text
+## Code of Conduct Violation Report
+
+1. **Involved Parties**:
+   - Violator: [Username of the person violating the CoC]
+   - Targeted Individual: [Your username or the username of the person targeted]
+
+2. **Description of the Incident**:
+   - [Provide a factual description of what happened. Be as objective and clear as possible.]
+
+3. **Desired Outcome / Correction**:
+   - [What actions or resolutions do you feel are appropriate to restore the safety of the community?]
+```
 
 ### Conflict of Interest Clause
 
@@ -93,6 +123,7 @@ This Code of Conduct is adapted from the [Contributor Covenant][homepage], versi
 
 The Contributor Covenant is managed by the [Organization for Ethical Source][ethical-source] and licensed under [CC BY-SA 4.0][cc-license]. The enforcement ladder is inspired by the work of the [Mozilla][mozilla] code of conduct team.
 
+[security-report-ref]: https://github.com/orthogonest/netskein/security/advisories/new
 [homepage]: https://contributor-covenant.org
 [version]: https://www.contributor-covenant.org/version/3/0/code_of_conduct/
 [ethical-source]: https://ethicalsource.dev
