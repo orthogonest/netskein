@@ -284,7 +284,12 @@ extension RequestBuilder {
     }
 
     public func send(
-        _ onChunk: @Sendable (ByteBuffer, _ progress: Double?) async throws -> Void
+        _ onChunk:
+            @Sendable (
+                _ chunk: ByteBuffer,
+                _ bytesReceived: Int64,
+                _ bytesTotal: Int64?
+            ) async throws -> Void
     ) async throws(NetSkeinError) {
         var activeHeaders = headers
 
@@ -334,13 +339,12 @@ extension RequestBuilder {
             let cookieHeaders = response.headers["Set-Cookie"]
             setCookie(cookieHeaders: cookieHeaders)
 
-            let expectedBytes = response.headers.first(name: "content-length").flatMap(Int.init)
-            var receivedBytes = 0
+            let expectedBytes = response.headers.first(name: "content-length").flatMap(Int64.init)
+            var receivedBytes: Int64 = 0
 
             for try await buffer in response.body {
-                receivedBytes += buffer.readableBytes
-                let progress: Double? = expectedBytes.map { Double(receivedBytes) / Double($0) }
-                try await onChunk(buffer, progress)
+                receivedBytes += Int64(buffer.readableBytes)
+                try await onChunk(buffer, receivedBytes, expectedBytes)
             }
 
             clientLogger.info(
