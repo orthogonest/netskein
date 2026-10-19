@@ -37,16 +37,12 @@ extension NetSkeinResponse {
         return self
     }
 
-    public func bytes(upTo maxLength: Int? = nil) -> ByteBuffer? {
-        guard let body else { return nil }
-        if let maxLength, body.readableBytes > maxLength {
-            return body.getSlice(at: body.readerIndex, length: maxLength)
-        }
-        return body
+    public func bytes() -> ByteBuffer? {
+        body
     }
 
     public func text(upTo maxLength: Int? = nil) -> String? {
-        guard let body = bytes(upTo: maxLength) else { return nil }
+        guard let body else { return nil }
         return body.getString(at: body.readerIndex, length: body.readableBytes)
     }
 
@@ -54,8 +50,7 @@ extension NetSkeinResponse {
         _: T.Type,
         decoder: JSONDecoder = JSONDecoder()
     ) throws(NetSkeinError) -> T {
-        guard let body = bytes() else { throw .simple(.emptyResponseBody) }
-
+        guard let body else { throw .simple(.emptyResponseBody) }
         do {
             return try decoder.decode(T.self, from: body)
         } catch {

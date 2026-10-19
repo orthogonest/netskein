@@ -2,11 +2,10 @@ import NIOCore
 import NetSkein
 
 actor ByteCounter {
-    var totalBytes = 0
+    var totalBytes: Int64 = 0
 
-    func add(_ bytes: Int) -> Int {
-        totalBytes += bytes
-        return totalBytes
+    func update(_ bytes: Int64) {
+        totalBytes = bytes
     }
 }
 
@@ -23,14 +22,15 @@ struct StreamingByteCounter {
 
             try await client.get("https://apple.com")
                 .timeout(.seconds(30))
-                .send { chunk, progress in
+                .send { chunk, received, total in
                     let currentFragmentBytes = chunk.readableBytes
                     print("Received fragment size: \(currentFragmentBytes) bytes")
 
-                    let currentTotal = await counter.add(currentFragmentBytes)
+                    await counter.update(received)
 
-                    if let progress = progress {
-                        print("Progress: \(Int(progress * 100))% (Total: \(currentTotal) bytes)")
+                    let progress = total.map { Double(received) / Double($0) }
+                    if let progress {
+                        print("Progress: \(Int(progress * 100))% (Total: \(received) bytes)")
                     }
                 }
 
