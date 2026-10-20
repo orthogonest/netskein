@@ -46,6 +46,7 @@ public struct NetSkeinStub: Sendable {
 extension NetSkeinStub: Equatable {
     public static func == (lhs: NetSkeinStub, rhs: NetSkeinStub) -> Bool {
         lhs.method == rhs.method
+            && lhs.delay == rhs.delay
             && String(describing: lhs.outcome) == String(describing: rhs.outcome)
     }
 }
@@ -53,6 +54,7 @@ extension NetSkeinStub: Equatable {
 extension NetSkeinStub: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(method.rawValue)
+        hasher.combine(delay)
         hasher.combine(String(describing: outcome))
     }
 }
