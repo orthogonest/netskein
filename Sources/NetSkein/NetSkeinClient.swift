@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Foundation
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
@@ -23,17 +24,20 @@ public final class NetSkeinClient: Sendable {
     let defaultHeaders: HTTPHeaders
     let cookieJar: NetSkeinCookieJar?
     let logger: Logger
+    let urlEncoder: NetSkeinURLEncoder
 
     public init(
         underlyingClient: any HTTPClientProtocol,
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: NetSkeinCookieJar? = nil,
-        logger: Logger = Logger(label: Label.identifier)
+        logger: Logger = Logger(label: Label.identifier),
+        urlEncoder: NetSkeinURLEncoder = NetSkeinURLEncoder()
     ) {
         self.underlyingClient = underlyingClient
         self.defaultHeaders = defaultHeaders
         self.cookieJar = cookieJar
         self.logger = logger
+        self.urlEncoder = urlEncoder
     }
 
     public convenience init(defaultHeaders: HTTPHeaders = .init()) {
@@ -48,30 +52,35 @@ public final class NetSkeinClient: Sendable {
 
 extension NetSkeinClient {
     public func get(_ url: String) -> RequestBuilder<BodyIsBlocked, EmptyBody> {
-        RequestBuilder(client: self, method: .GET, url: url)
+        RequestBuilder(client: self, method: .GET, url: url, urlEncoder: urlEncoder)
     }
 
     public func post(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
-        RequestBuilder(client: self, method: .POST, url: url)
+        RequestBuilder(client: self, method: .POST, url: url, urlEncoder: urlEncoder)
     }
 
     public func put(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
-        RequestBuilder(client: self, method: .PUT, url: url)
+        RequestBuilder(client: self, method: .PUT, url: url, urlEncoder: urlEncoder)
     }
 
     public func patch(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
-        RequestBuilder(client: self, method: .PATCH, url: url)
+        RequestBuilder(client: self, method: .PATCH, url: url, urlEncoder: urlEncoder)
     }
 
     public func delete(_ url: String) -> RequestBuilder<BodyIsBlocked, EmptyBody> {
-        RequestBuilder(client: self, method: .DELETE, url: url)
+        RequestBuilder(client: self, method: .DELETE, url: url, urlEncoder: urlEncoder)
     }
 
     public func request(
         _ method: HTTPMethod,
         url: String
     ) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
-        RequestBuilder<BodyIsAllowed, EmptyBody>(client: self, method: method, url: url)
+        RequestBuilder<BodyIsAllowed, EmptyBody>(
+            client: self,
+            method: method,
+            url: url,
+            urlEncoder: urlEncoder
+        )
     }
 
     public func shutdown() async throws(NetSkeinError) {

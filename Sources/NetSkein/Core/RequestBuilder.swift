@@ -26,6 +26,7 @@ public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
     private var body: HTTPClientRequest.Body?
     private var maxResponseBytes: Int
     private var timeout: TimeAmount?
+    private let urlEncoder: NetSkeinURLEncoder
     private let fileManager: FileManager
 
     public init(
@@ -35,7 +36,9 @@ public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
         headers: HTTPHeaders? = nil,
         body: HTTPClientRequest.Body? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024,
-        timeout: TimeAmount? = nil
+        timeout: TimeAmount? = nil,
+        urlEncoder: NetSkeinURLEncoder = NetSkeinURLEncoder(),
+        fileManager: FileManager = .default
     ) {
         self.client = client
         self.method = method
@@ -44,7 +47,8 @@ public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
         self.body = body
         self.maxResponseBytes = maxResponseBytes
         self.timeout = timeout
-        fileManager = .default
+        self.urlEncoder = urlEncoder
+        self.fileManager = fileManager
     }
 }
 
@@ -120,16 +124,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
     public func form(
         _ fields: [String: String]
     ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
-        var components = URLComponents()
-        components.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
-
-        guard let queryString = components.query ?? components.percentEncodedQuery else {
-            throw .custom(
-                kind: .invalidPayload,
-                message: "Failed to generate URL-encoded form data from the provided fields.",
-            )
-        }
-
+        let queryString = urlEncoder.encode(fields)
         let data = Data(queryString.utf8)
         let allocator = ByteBufferAllocator()
         var buffer = allocator.buffer(capacity: data.count)
@@ -146,7 +141,9 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             headers: copy.headers,
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
-            timeout: copy.timeout
+            timeout: copy.timeout,
+            urlEncoder: copy.urlEncoder,
+            fileManager: copy.fileManager
         )
     }
 
@@ -171,7 +168,9 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
                 headers: copy.headers,
                 body: copy.body,
                 maxResponseBytes: copy.maxResponseBytes,
-                timeout: copy.timeout
+                timeout: copy.timeout,
+                urlEncoder: copy.urlEncoder,
+                fileManager: copy.fileManager
             )
         } catch {
             throw .custom(
@@ -198,7 +197,9 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             headers: copy.headers,
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
-            timeout: copy.timeout
+            timeout: copy.timeout,
+            urlEncoder: copy.urlEncoder,
+            fileManager: copy.fileManager
         )
     }
 
@@ -262,7 +263,9 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             headers: copy.headers,
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
-            timeout: copy.timeout
+            timeout: copy.timeout,
+            urlEncoder: copy.urlEncoder,
+            fileManager: copy.fileManager
         )
     }
 }
@@ -277,7 +280,9 @@ extension RequestBuilder where Method == BodyIsBlocked, Payload == EmptyBody {
             headers: self.headers,
             body: self.body,
             maxResponseBytes: self.maxResponseBytes,
-            timeout: self.timeout
+            timeout: self.timeout,
+            urlEncoder: self.urlEncoder,
+            fileManager: self.fileManager
         )
     }
 }
