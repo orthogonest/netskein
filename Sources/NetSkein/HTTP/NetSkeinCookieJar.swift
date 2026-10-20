@@ -4,7 +4,9 @@ import NIOHTTP1
 public final class NetSkeinCookieJar: Sendable {
     private let storage: NIOLockedValueBox<[String: [String: String]]>
 
-    public init() { storage = NIOLockedValueBox([:]) }
+    public init() {
+        storage = NIOLockedValueBox([:])
+    }
 }
 
 extension NetSkeinCookieJar {

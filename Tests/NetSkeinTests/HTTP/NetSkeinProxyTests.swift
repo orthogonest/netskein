@@ -5,7 +5,6 @@ import Testing
 @testable import NetSkein
 
 struct NetSkeinProxyTests {
-
     @Test(
         "NetSkeinProxyTests: Verifies HTTP proxy factory accurately maps host and port with safe default options"
     )
