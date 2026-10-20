@@ -1,18 +1,31 @@
 import AsyncHTTPClient
 import Logging
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
 import NIOHTTPCompression
 import NIOSSL
 
+public protocol HTTPClientProtocol: Sendable {
+    func execute(
+        _ request: HTTPClientRequest,
+        timeout: TimeAmount,
+        logger: Logger?
+    ) async throws -> HTTPClientResponse
+
+    func shutdown() async throws
+}
+
+extension HTTPClient: HTTPClientProtocol {}
+
 public final class NetSkeinClient: Sendable {
-    let underlyingClient: HTTPClient
+    let underlyingClient: any HTTPClientProtocol
     let defaultHeaders: HTTPHeaders
     let cookieJar: NetSkeinCookieJar?
     let logger: Logger
 
     public init(
-        underlyingClient: HTTPClient,
+        underlyingClient: any HTTPClientProtocol,
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: NetSkeinCookieJar? = nil,
         logger: Logger = Logger(label: Label.identifier)
@@ -28,7 +41,9 @@ public final class NetSkeinClient: Sendable {
         self.init(underlyingClient: client, defaultHeaders: defaultHeaders)
     }
 
-    public static func builder() -> NetSkeinClientBuilder { NetSkeinClientBuilder() }
+    public static func builder() -> NetSkeinClientBuilder {
+        NetSkeinClientBuilder()
+    }
 }
 
 extension NetSkeinClient {
@@ -92,6 +107,9 @@ public struct NetSkeinClientBuilder: Sendable {
     private var acceptInvalidCertificates: Bool
     private var logger: Logger
 
+    private var stubs: [NetSkeinStub]
+    private var stubOnShutdown: (@Sendable () async throws -> Void)?
+
     public init() {
         connectTimeout = .seconds(10)
         readTimeout = .seconds(30)
@@ -103,6 +121,7 @@ public struct NetSkeinClientBuilder: Sendable {
         decompressionLimit = .size(10 * 1024 * 1024)
         acceptInvalidCertificates = false
         logger = Logger(label: Label.identifier)
+        stubs = []
     }
 }
 
@@ -201,8 +220,43 @@ extension NetSkeinClientBuilder {
         copy.logger = logger
         return copy
     }
+}
 
+extension NetSkeinClientBuilder {
+    @discardableResult
+    public func addStubs(_ stubs: [NetSkeinStub]) -> Self {
+        var copy = self
+        copy.stubs.append(contentsOf: stubs)
+        return copy
+    }
+
+    @discardableResult
+    public func addStub(_ stub: NetSkeinStub) -> Self {
+        var copy = self
+        copy.stubs.append(stub)
+        return copy
+    }
+
+    @discardableResult
+    public func stubOnShutdown(_ onShutdown: @escaping @Sendable () async throws -> Void) -> Self {
+        var copy = self
+        copy.stubOnShutdown = onShutdown
+        return copy
+    }
+}
+
+extension NetSkeinClientBuilder {
     public func build() -> NetSkeinClient {
+        if !stubs.isEmpty {
+            let client = NetSkeinHTTPClientMock(stubs: stubs, onShutdown: stubOnShutdown)
+            return NetSkeinClient(
+                underlyingClient: client,
+                defaultHeaders: defaultHeaders,
+                cookieJar: cookieJar,
+                logger: logger
+            )
+        }
+
         var config = HTTPClient.Configuration()
 
         config.timeout = HTTPClient.Configuration.Timeout(
