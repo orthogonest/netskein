@@ -15,7 +15,7 @@ struct RequestBuilderTests {
     }
 }
 
-// MARK: Fluent Chaining & Properties Configuration Path Coverage
+// MARK: - Fluent Chaining & Properties Configuration Path Coverage
 
 extension RequestBuilderTests {
     @Test(

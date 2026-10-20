@@ -3,7 +3,7 @@ import Logging
 import NIOConcurrencyHelpers
 import NIOCore
 
-public final class NetSkeinHTTPClientMock: HTTPClientProtocol, Sendable {
+public final class NetSkeinHTTPClientMock: Sendable {
     private let stubsBox: NIOLockedValueBox<[NetSkeinStub]>
     private let callCounts: NIOLockedValueBox<[String: Int]>
     private let onShutdown: (@Sendable () async throws -> Void)?
@@ -16,11 +16,13 @@ public final class NetSkeinHTTPClientMock: HTTPClientProtocol, Sendable {
         self.callCounts = NIOLockedValueBox([:])
         self.onShutdown = onShutdown
     }
+}
 
+extension NetSkeinHTTPClientMock: HTTPClientProtocol {
     public func execute(
         _ request: HTTPClientRequest,
         timeout: TimeAmount,
-        logger: Logger?
+        logger: Logger? = nil
     ) async throws -> HTTPClientResponse {
         let key = "[\(request.method.rawValue)]\(request.url)"
 

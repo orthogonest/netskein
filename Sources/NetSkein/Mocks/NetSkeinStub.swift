@@ -4,7 +4,7 @@ import NIOHTTP1
 
 public struct NetSkeinStub: Sendable {
     public enum Outcome: Sendable {
-        case success(status: HTTPResponseStatus, headers: HTTPHeaders, body: ByteBuffer?)
+        case success(status: HTTPResponseStatus, headers: HTTPHeaders, body: ByteBuffer? = nil)
         case failure(any Error & Sendable)
     }
 
