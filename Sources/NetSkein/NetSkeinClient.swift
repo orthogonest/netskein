@@ -32,24 +32,31 @@ public final class NetSkeinClient: Sendable {
 }
 
 extension NetSkeinClient {
-    public func get(_ url: String) -> RequestBuilder<GETRequest> {
-        RequestBuilder<GETRequest>(client: self, method: .GET, url: url)
+    public func get(_ url: String) -> RequestBuilder<BodyIsBlocked, EmptyBody> {
+        RequestBuilder(client: self, method: .GET, url: url)
     }
 
-    public func post(_ url: String) -> RequestBuilder<POSTRequest> {
-        RequestBuilder<POSTRequest>(client: self, method: .POST, url: url)
+    public func post(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+        RequestBuilder(client: self, method: .POST, url: url)
     }
 
-    public func put(_ url: String) -> RequestBuilder<PUTRequest> {
-        RequestBuilder<PUTRequest>(client: self, method: .PUT, url: url)
+    public func put(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+        RequestBuilder(client: self, method: .PUT, url: url)
     }
 
-    public func patch(_ url: String) -> RequestBuilder<PATCHRequest> {
-        RequestBuilder<PATCHRequest>(client: self, method: .PATCH, url: url)
+    public func patch(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+        RequestBuilder(client: self, method: .PATCH, url: url)
     }
 
-    public func delete(_ url: String) -> RequestBuilder<DELETERequest> {
-        RequestBuilder<DELETERequest>(client: self, method: .DELETE, url: url)
+    public func delete(_ url: String) -> RequestBuilder<BodyIsBlocked, EmptyBody> {
+        RequestBuilder(client: self, method: .DELETE, url: url)
+    }
+
+    public func request(
+        _ method: HTTPMethod,
+        url: String
+    ) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+        RequestBuilder<BodyIsAllowed, EmptyBody>(client: self, method: method, url: url)
     }
 
     public func shutdown() async throws(NetSkeinError) {
