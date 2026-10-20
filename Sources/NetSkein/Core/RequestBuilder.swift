@@ -50,7 +50,8 @@ public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
 
 extension RequestBuilder {
     private func getCookie() -> String? {
-        guard let jar = client.cookieJar,
+        guard
+            let jar = client.cookieJar,
             let urlObject = URL(string: url),
             let host = urlObject.host,
             let cookieValue = jar.cookieHeader(for: host)
@@ -59,7 +60,8 @@ extension RequestBuilder {
     }
 
     private func setCookie(cookieHeaders: [String]) {
-        guard let jar = client.cookieJar,
+        guard
+            let jar = client.cookieJar,
             let urlObject = URL(string: url),
             let host = urlObject.host
         else { return }
@@ -160,7 +162,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
 
             var copy = self
             copy.body = .bytes(buffer)
-            copy.headers.add(name: "Content-Type", value: "application/json")
+            copy.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
 
             return RequestBuilder<Method, FixedBody>(
                 client: copy.client,
@@ -205,9 +207,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
         fileAtPath path: String,
         chunkSize: Int = 64 * 1024
     ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
-        var copy = self
-
-        guard let fileHandle = FileHandle(forReadingAtPath: path),
+        guard
             let fileAttributes = try? fileManager.attributesOfItem(atPath: path),
             let fileSize = fileAttributes[.size] as? Int64
         else {
@@ -217,7 +217,41 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             )
         }
 
-        copy.body = .stream(fileHandle.bytes, length: .known(fileSize))
+        guard let fileHandle = FileHandle(forReadingAtPath: path) else {
+            throw .custom(
+                kind: .ioFailure,
+                message: "Unable to open file for reading at path: \(path)"
+            )
+        }
+
+        let chunkedStream = AsyncStream<ByteBuffer> { continuation in
+            continuation.onTermination = { _ in
+                try? fileHandle.close()
+            }
+
+            Task {
+                do {
+                    while true {
+                        guard
+                            let data = try fileHandle.read(upToCount: chunkSize),
+                            !data.isEmpty
+                        else {
+                            continuation.finish()
+                            break
+                        }
+                        let allocator = ByteBufferAllocator()
+                        var buffer = allocator.buffer(capacity: data.count)
+                        buffer.writeBytes(data)
+                        continuation.yield(buffer)
+                    }
+                } catch {
+                    continuation.finish()
+                }
+            }
+        }
+
+        var copy = self
+        copy.body = .stream(chunkedStream, length: .known(fileSize))
         copy.headers.replaceOrAdd(name: "Transfer-Encoding", value: "chunked")
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
 
@@ -254,8 +288,8 @@ extension RequestBuilder where Method == BodyIsBlocked {
         unavailable,
         message: "This HTTP method is forbidden from holding a request body payload."
     )
-    public func json(
-        _ bodyObject: some Encodable
+    public func form(
+        _ fields: [String: String]
     ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
@@ -265,8 +299,8 @@ extension RequestBuilder where Method == BodyIsBlocked {
         unavailable,
         message: "This HTTP method is forbidden from holding a request body payload."
     )
-    public func form(
-        _ fields: [String: String]
+    public func json(
+        _ bodyObject: some Encodable
     ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
@@ -300,7 +334,9 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
         message:
             "The request body has already been assigned. A single request configuration can only contain one body payload."
     )
-    public func form(_ fields: [String: String]) -> RequestBuilder<Method, FixedBody> {
+    public func form(
+        _ fields: [String: String]
+    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -324,7 +360,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
     )
     public func multipart(
         _ form: NetSkeinMultipartForm
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) -> RequestBuilder<Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -516,7 +552,8 @@ extension RequestBuilder {
             activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
 
-        guard fileManager.createFile(atPath: path, contents: nil),
+        guard
+            fileManager.createFile(atPath: path, contents: nil),
             let fileHandle = FileHandle(forWritingAtPath: path)
         else {
             throw .custom(
