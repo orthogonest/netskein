@@ -36,6 +36,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: false
 
       - name: Run Strict Swift Format Pipeline
         run: |
