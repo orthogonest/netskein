@@ -74,5 +74,5 @@ jobs:
 
       - name: Check Minimum Coverage Threshold
         env:
-          MIN_COVERAGE_THRESHOLD: 85
+          MIN_COVERAGE_THRESHOLD: 90
         run: ./Scripts/check-coverage.sh

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configure minimum coverage threshold (in percent)
-MIN_COVERAGE=${MIN_COVERAGE_THRESHOLD:-80}
+MIN_COVERAGE=${MIN_COVERAGE_THRESHOLD:-90}
 
 echo "📊 Calculating code coverage..."
 
