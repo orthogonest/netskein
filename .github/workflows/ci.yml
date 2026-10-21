@@ -51,28 +51,15 @@ jobs:
           swift package clean
           swift package resolve
 
-      - name: Build
-        run: swift build --build-tests
-
       - name: Run Tests
         run: |
           swift test \
           --parallel \
           --enable-swift-testing \
-          --enable-code-coverage \
-          --build-path .build
-
-      - name: Generate HTML Report (Optional for artifacts)
-        run: |
-          mkdir -p coverage-report
-          xcrun llvm-cov show \
-            .build/out/Products/Debug/NetSkeinTests.xctest/\
-            Contents/MacOS/NetSkeinTests \
-            -instr-profile=.build/out/Products/Debug/codecov/default.profdata \
-            -format=html -output-dir=coverage-report \
-            Sources
+          --enable-code-coverage
 
       - name: Check Minimum Coverage Threshold
-        env:
-          MIN_COVERAGE_THRESHOLD: 90
-        run: ./Scripts/check-coverage.sh
+        uses: lucaswilliamevans/swift-coverage-action@v1
+        with:
+          target-percentage: 90.0
+          fail-on-under-target: true
