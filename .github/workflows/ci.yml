@@ -34,12 +34,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-precommit-
 
-      - name: Install Pre-Commit
-        run: pip3 install pre-commit
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.3.0
 
       - name: Run Strict Swift Format Pipeline
         run: |
-          pre-commit run \
+          uvx pre-commit run \
             --show-diff-on-failure \
             --color=always \
             --all-files
