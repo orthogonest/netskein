@@ -59,7 +59,7 @@ jobs:
           --enable-code-coverage
 
       - name: Convert Coverage to LCOV
-        uses: step-security/swift-coverage-action@v6
+        uses: step-security/swift-coverage-action@v5
         id: coverage-files
         with:
           format: "lcov"
