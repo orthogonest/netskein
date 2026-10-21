@@ -273,6 +273,21 @@ extension NetSkeinClientBuilderTests {
             .build()
 
         #expect(client.underlyingClient is HTTPClient)
+
+        try await client.shutdown()
+    }
+
+    @Test(
+        "NetSkeinClientBuilderTests: Verifies proxy configurations pass down properties correctly"
+    )
+    func testProxyBuildBranch() async throws {
+        let customProxy = NetSkeinProxy.http(host: "127.0.0.1", port: 3128)
+        let client = NetSkeinClientBuilder()
+            .proxy(customProxy)
+            .build()
+
+        #expect(client.underlyingClient is HTTPClient)
+
         try await client.shutdown()
     }
 }

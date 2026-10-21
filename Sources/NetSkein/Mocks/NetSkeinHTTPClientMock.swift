@@ -38,13 +38,6 @@ extension NetSkeinHTTPClientMock: HTTPClientProtocol {
             $0.method == request.method && $0.urlMatcher(request.url)
         }
 
-        guard !matches.isEmpty else {
-            throw NetSkeinError.custom(
-                kind: .networkFailure,
-                message: "NetSkeinMockEngine: Unhandled request caught for route \(key)"
-            )
-        }
-
         let safeIndex = currentCallCount - 1
 
         let matchingStub: NetSkeinStub =
@@ -55,7 +48,7 @@ extension NetSkeinHTTPClientMock: HTTPClientProtocol {
             } else {
                 throw NetSkeinError.custom(
                     kind: .networkFailure,
-                    message: "NetSkeinMockEngine: Unhandled request caught for route \(key)"
+                    message: "Unhandled request caught for route \(key)"
                 )
             }
 

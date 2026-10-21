@@ -14,7 +14,6 @@ struct NetSkeinResponseTests {
 
     @Test("NetSkeinResponseTests: Verifies successful body collection and basic extraction methods")
     func testSuccessfulResponseCollection() async throws {
-        // Setup Mock HTTPClientResponse
         let allocator = ByteBufferAllocator()
         var mockBody = allocator.buffer(capacity: 12)
         mockBody.writeString("Hello NetSkein")
@@ -25,17 +24,25 @@ struct NetSkeinResponseTests {
             body: .bytes(mockBody)
         )
 
-        // Initialize NetSkeinResponse
         let response = try await NetSkeinResponse(
             underlyingResponse: clientResponse,
             maxBytes: 1024
         )
 
-        // Assertions
         #expect(response.status == .ok)
         #expect(response.headers.first(name: "Content-Type") == "text/plain")
         #expect(response.bytes()?.readableBytes == 14)
         #expect(response.text() == "Hello NetSkein")
+    }
+
+    @Test(
+        "NetSkeinResponseTests: Ensures empty response bodies return nil when parsing to text"
+    )
+    func testTextEmptyBodyNil() async throws {
+        let clientResponse = HTTPClientResponse(status: .ok, body: .bytes(ByteBuffer()))
+        let response = try await NetSkeinResponse(underlyingResponse: clientResponse, maxBytes: 10)
+
+        #expect(response.text() == nil)
     }
 
     @Test(

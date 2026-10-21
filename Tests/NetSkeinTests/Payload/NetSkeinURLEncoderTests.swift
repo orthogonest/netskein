@@ -35,4 +35,16 @@ struct NetSkeinURLEncoderTests {
         #expect(result.contains("spaces=hello+world+swift"))
         #expect(result.contains("symbols=id%3F%2F%24%23"))
     }
+
+    @Test(
+        "NetSkeinURLEncoderTests: Assures fallback execution when encountering malformed string characters"
+    )
+    func testMalformedCharactersFallback() {
+        var encoder = NetSkeinURLEncoder()
+        encoder._percentEncode = { _, _ in nil }
+
+        let result = encoder.encode(["testKey": "test Value"])
+
+        #expect(result == "testKey=test Value")
+    }
 }

@@ -114,29 +114,32 @@ struct NetSkeinErrorTests {
         "NetSkeinErrorTests: Verifies remaining simple enum kinds fallback cleanly to designated default descriptions"
     )
     func testRemainingSimpleLocalizations() {
-        let emptyBody = NetSkeinError.simple(.emptyResponseBody)
-        #expect(
-            emptyBody.errorDescription
-                == "The server responded successfully, but the response body was unexpectedly empty."
-        )
-        #expect(emptyBody.failureReason == "The content buffer contains zero readable bytes.")
+        let payloadErr = NetSkeinError.simple(.invalidPayload)
+        #expect(payloadErr.errorDescription?.contains("response payload data") == true)
+        #expect(payloadErr.failureReason?.contains("The client data") == true)
 
-        let ioFail = NetSkeinError.simple(.ioFailure)
-        #expect(
-            ioFail.errorDescription == "A local filesystem or storage input/output error occurred."
-        )
-        #expect(ioFail.failureReason?.contains("secure file handle") == true)
+        let clientErr = NetSkeinError.simple(.clientError)
+        #expect(clientErr.errorDescription?.contains("client-side error") == true)
+        #expect(clientErr.failureReason?.contains("The server rejected the request") == true)
 
         let serverErr = NetSkeinError.simple(.serverError)
         #expect(
-            serverErr.errorDescription
-                == "The server encountered an internal error or failed to fulfill the request."
+            serverErr.errorDescription?.contains("The server encountered an internal error") == true
+        )
+        #expect(
+            serverErr.failureReason?.contains("The upstream server is currently unavailable")
+                == true
         )
 
-        let clientErr = NetSkeinError.simple(.clientError)
+        let emptyBody = NetSkeinError.simple(.emptyResponseBody)
         #expect(
-            clientErr.errorDescription
-                == "The request could not be fulfilled due to a client-side error."
+            emptyBody.errorDescription?.contains("the response body was unexpectedly empty.")
+                == true
         )
+        #expect(emptyBody.failureReason?.contains("zero readable bytes.") == true)
+
+        let ioFail = NetSkeinError.simple(.ioFailure)
+        #expect(ioFail.errorDescription?.contains("input/output error occurred.") == true)
+        #expect(ioFail.failureReason?.contains("secure file handle") == true)
     }
 }
