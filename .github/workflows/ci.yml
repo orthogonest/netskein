@@ -19,40 +19,67 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify Host Swift Version
         run: swift --version
 
+      - name: Cache Pre-Commit Hooks
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: >
+            ${{ runner.os }}-precommit-${{
+            hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-precommit-
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: false
+
       - name: Run Strict Swift Format Pipeline
-        uses: pre-commit/action@v3.0.1
+        run: |
+          uvx pre-commit run \
+            --show-diff-on-failure \
+            --color=always \
+            --all-files
 
   build-test:
-    name: Build + Tests
+    name: Build + Tests + Coverage
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify Host Swift Version
         run: swift --version
 
       - name: Cache SwiftPM
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.swiftpm
             .build
-          key: ${{ runner.os }}-swiftpm-${{ hashFiles('**/Package.resolved') }}
+          key: >
+            ${{ runner.os }}-swiftpm-${{
+            hashFiles('**/Package.resolved') }}
           restore-keys: ${{ runner.os }}-swiftpm-
 
       - name: Resolve Dependencies
-        run: |
-          swift package clean
-          swift package resolve
-
-      - name: Build
-        run: swift build --build-tests
+        run: swift package resolve
 
       - name: Run Tests
-        run: swift test --parallel --enable-swift-testing
+        run: |
+          swift test \
+            --parallel \
+            --enable-swift-testing \
+            --enable-code-coverage
+
+      - name: Check Minimum Coverage Threshold
+        env:
+          MIN_COVERAGE_THRESHOLD: 90
+        run: |
+          chmod +x ./Scripts/check-coverage.sh
+          ./Scripts/check-coverage.sh
