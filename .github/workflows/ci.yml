@@ -58,14 +58,9 @@ jobs:
           --enable-swift-testing \
           --enable-code-coverage
 
-      - name: Convert Coverage to LCOV
-        uses: step-security/swift-coverage-action@v5
-        id: coverage-files
-        with:
-          format: "lcov"
-
       - name: Check Minimum Coverage Threshold
-        uses: tluijken/code-coverage-threshold@v1
-        with:
-          coverage-file: ".swiftcov/lcov.info"
-          minimum-coverage: 90
+        env:
+          MIN_COVERAGE_THRESHOLD: 90
+        run: |
+          chmod +x ./Scripts/check-coverage.sh
+          ./Scripts/check-coverage.sh
