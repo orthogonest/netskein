@@ -74,5 +74,9 @@ coverage: _prepare-cov _testing
 	  Sources
 	@echo "$(GREEN)>>> Report generated at: $(COV_OUT_DIR)/index.html$(RESET)"
 
+## Generate terminal-based summary code coverage report
+cov:
+	@./Scripts/check-coverage.sh
+
 _prepare-cov:
 	@mkdir -p $(COV_OUT_DIR)
