@@ -31,7 +31,7 @@ public final class NetSkeinClient: Sendable {
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: NetSkeinCookieJar? = nil,
         logger: Logger = Logger(label: Label.identifier),
-        urlEncoder: NetSkeinURLEncoder = NetSkeinURLEncoder()
+        urlEncoder: NetSkeinURLEncoder = .default,
     ) {
         self.underlyingClient = underlyingClient
         self.defaultHeaders = defaultHeaders

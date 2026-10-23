@@ -5,11 +5,37 @@ import Testing
 
 struct NetSkeinURLEncoderTests {
     @Test(
+        "NetSkeinURLEncoderTests: Verifies the shared default instance and basic path/form encoding"
+    )
+    func testBasicAndDefault() {
+        let encoder = NetSkeinURLEncoder.default
+        #expect(encoder.encodePath("hello world") == "hello%20world")
+        #expect(encoder.encodeForm(["key": "value"]) == "key=value")
+    }
+
+    @Test(
+        "NetSkeinURLEncoderTests: Verifies path and form encoding behaviors, sorting, and fallbacks"
+    )
+    func testEncodingAndFallback() {
+        let encoder = NetSkeinURLEncoder()
+        #expect(encoder.encodePath("cross+path") == "cross%2Bpath")
+        #expect(
+            encoder.encodeForm(["b_key": "value_b", "a_key": "value_a"])
+                == "a_key=value_a&b_key=value_b"
+        )
+
+        var fallbackEncoder = NetSkeinURLEncoder()
+        fallbackEncoder._percentEncode = { _, _ in nil }
+        #expect(fallbackEncoder.encodePath("fallback segment") == "fallback segment")
+        #expect(fallbackEncoder.encodeForm(["test Key": "test Value"]) == "test Key=test Value")
+    }
+
+    @Test(
         "NetSkeinURLEncoderTests: Verifies standard fields are correctly encoded and sorted alphabetically"
     )
     func testStandardEncodingAndSorting() {
         let fields = ["b_key": "value_b", "a_key": "value_a"]
-        let result = NetSkeinURLEncoder().encode(fields)
+        let result = NetSkeinURLEncoder().encodeForm(fields)
 
         // Assert that sorting maintains deterministic predictable string matches
         #expect(result == "a_key=value_a&b_key=value_b")
@@ -26,7 +52,7 @@ struct NetSkeinURLEncoderTests {
             "symbols": "id?/$#",
         ]
 
-        let result = NetSkeinURLEncoder().encode(complexFields)
+        let result = NetSkeinURLEncoder().encodeForm(complexFields)
 
         // Assert specific token matches within the final output string layout
         #expect(result.contains("email=dev%2Btest%40netskein.io"))
@@ -43,7 +69,7 @@ struct NetSkeinURLEncoderTests {
         var encoder = NetSkeinURLEncoder()
         encoder._percentEncode = { _, _ in nil }
 
-        let result = encoder.encode(["testKey": "test Value"])
+        let result = encoder.encodeForm(["testKey": "test Value"])
 
         #expect(result == "testKey=test Value")
     }

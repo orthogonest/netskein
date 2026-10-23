@@ -1,7 +1,9 @@
 import Foundation
 
-/// A production-grade encoder specifically engineered to satisfy the strict W3C 'application/x-www-form-urlencoded' specifications.
 public struct NetSkeinURLEncoder: Sendable {
+    public static let `default`: Self = NetSkeinURLEncoder()
+
+    private let pathAllowedCharacters: CharacterSet
     private let formAllowedCharacters: CharacterSet
 
     internal var _percentEncode: @Sendable (String, CharacterSet) -> String? = {
@@ -11,25 +13,27 @@ public struct NetSkeinURLEncoder: Sendable {
     }
 
     public init() {
+        var pathChars = CharacterSet.urlPathAllowed
+        pathChars.remove(charactersIn: "+/")
+        self.pathAllowedCharacters = pathChars
+
         var characters = CharacterSet.urlQueryAllowed
-        // Remove characters that are legal in a standard URL query but illegal or volatile inside a Form Body
         characters.remove(charactersIn: "&=+@?/$#,:; ")
         self.formAllowedCharacters = characters
     }
 
-    /// Encodes a dictionary of scalar fields into a compliant urlencoded string block.
-    public func encode(_ fields: [String: String]) -> String {
+    public func encodePath(_ segment: String) -> String {
+        _percentEncode(segment, pathAllowedCharacters) ?? segment
+    }
+
+    public func encodeForm(_ fields: [String: String]) -> String {
         let encodedPairs = fields.map { (key, value) -> String in
             let escapedKey = _percentEncode(key, formAllowedCharacters) ?? key
-
-            // Standardize spaces to "+" as strictly recommended by the W3C form specifications layout
             let escapedValue = _percentEncode(value, formAllowedCharacters) ?? value
-            let cleanValue = escapedValue.replacingOccurrences(of: "%20", with: "+")
-
-            return "\(escapedKey)=\(cleanValue)"
+            let cleanedKey = escapedKey.replacingOccurrences(of: "%20", with: "+")
+            let cleanedValue = escapedValue.replacingOccurrences(of: "%20", with: "+")
+            return "\(cleanedKey)=\(cleanedValue)"
         }
-
-        // Join properties utilizing the structural ampersand token
         return encodedPairs.sorted().joined(separator: "&")
     }
 }

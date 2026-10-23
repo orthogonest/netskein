@@ -32,8 +32,9 @@ extension RequestBuilderTests {
             method: .POST,
             url: "https://netskein.local"
         )
-        .header("X-API-Version", "1.4.2")
+        .path("profile/\(0)")
         .query(["search": "swift6", "sort": "desc"])
+        .header("X-API-Version", "1.4.2")
         .maxResponseSize(5 * 1024 * 1024)
         .timeout(.seconds(15))
 
@@ -53,6 +54,7 @@ extension RequestBuilderTests {
         }
 
         #expect(headers.first(name: "X-API-Version") == "1.4.2")
+        #expect(urlString.contains("profile/0"))
         #expect(urlString.contains("search=swift6"))
         #expect(urlString.contains("sort=desc"))
         #expect(maxBytes == 5 * 1024 * 1024)
