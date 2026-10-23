@@ -12,6 +12,11 @@ struct NetSkeinResponseTests {
         let name: String
     }
 
+    struct MockError: Error, Codable, Equatable {
+        let errorCode: String
+        let reason: String
+    }
+
     @Test("NetSkeinResponseTests: Verifies successful body collection and basic extraction methods")
     func testSuccessfulResponseCollection() async throws {
         let allocator = ByteBufferAllocator()
@@ -46,7 +51,7 @@ struct NetSkeinResponseTests {
     }
 
     @Test(
-        "NetSkeinResponseTests: Verifies errorForStatus returns self on 2xx and throws badStatus on non-2xx codes"
+        "NetSkeinResponseTests: Verifies validate returns self on 2xx and throws badStatus on non-2xx codes"
     )
     func testErrorForStatusBehavior() async throws {
         // Test Success Case (HTTP 200)
@@ -57,7 +62,7 @@ struct NetSkeinResponseTests {
         )
 
         // Should not throw and return self
-        let verifiedResponse = try successResponse.errorForStatus()
+        let verifiedResponse = try successResponse.validate()
         #expect(verifiedResponse.status == .ok)
 
         // Test Failure Case (HTTP 404)
@@ -72,7 +77,64 @@ struct NetSkeinResponseTests {
 
         // Should throw NetSkeinError with clientError kind
         #expect(throws: NetSkeinError.self) {
-            try failureResponse.errorForStatus()
+            try failureResponse.validate()
+        }
+    }
+
+    @Test(
+        "NetSkeinResponseTests: Verifies throws custom json error on non-2xx codes"
+    )
+    func testCustomJSONResponseError() async throws {
+        // Test Success Case (HTTP 200)
+        let successClientResponse = HTTPClientResponse(status: .ok, body: .bytes(ByteBuffer()))
+        let successResponse = try await NetSkeinResponse(
+            underlyingResponse: successClientResponse,
+            maxBytes: 10
+        )
+
+        // Should not throw and return self
+        let verifiedResponse = try successResponse.validate(decoding: MockError.self)
+        #expect(verifiedResponse.status == .ok)
+
+        // Test Not Found Case (HTTP 404)
+        let expectedError = MockError(
+            errorCode: "RESOURCE_NOT_FOUND",
+            reason: "User with ID 42 does not exist."
+        )
+        let errorData = try JSONEncoder().encode(expectedError)
+        var errorBuffer = ByteBufferAllocator().buffer(capacity: errorData.count)
+        errorBuffer.writeBytes(errorData)
+
+        let failureClientResponse = HTTPClientResponse(
+            status: .notFound,
+            body: .bytes(errorBuffer)
+        )
+        let failureResponse = try await NetSkeinResponse(
+            underlyingResponse: failureClientResponse,
+            maxBytes: 1024
+        )
+
+        #expect(throws: expectedError) {
+            try failureResponse.validate(decoding: MockError.self)
+        }
+    }
+
+    @Test(
+        "NetSkeinResponseTests: Verifies throws custom html error on non-2xx codes"
+    )
+    func testCustomHTMLResponseError() async throws {
+        let htmlBuffer = ByteBuffer(string: "<html><body>502 Bad Gateway</body></html>")
+        let gatewayClientResponse = HTTPClientResponse(
+            status: .badGateway,
+            body: .bytes(htmlBuffer)
+        )
+        let gatewayResponse = try await NetSkeinResponse(
+            underlyingResponse: gatewayClientResponse,
+            maxBytes: 1024
+        )
+
+        #expect(throws: NetSkeinError.self) {
+            try gatewayResponse.validate(decoding: MockError.self)
         }
     }
 
