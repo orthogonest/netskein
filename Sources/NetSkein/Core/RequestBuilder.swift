@@ -37,7 +37,7 @@ public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
         body: HTTPClientRequest.Body? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024,
         timeout: TimeAmount? = nil,
-        urlEncoder: NetSkeinURLEncoder = NetSkeinURLEncoder(),
+        urlEncoder: NetSkeinURLEncoder = .default,
         fileManager: FileManager = .default
     ) {
         self.client = client
@@ -83,6 +83,15 @@ extension RequestBuilder {
 
 extension RequestBuilder {
     @discardableResult
+    public func path(_ segment: NetSkeinPathSegment) -> Self {
+        var copy = self
+        let currentURL = copy.url.trimmingCharacters(in: ["/"])
+        let newSegment = segment.value.trimmingCharacters(in: ["/"])
+        copy.url = "\(currentURL)/\(newSegment)"
+        return copy
+    }
+
+    @discardableResult
     public func header(_ name: String, _ value: String) -> Self {
         var copy = self
         copy.headers.replaceOrAdd(name: name, value: value)
@@ -124,7 +133,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
     public func form(
         _ fields: [String: String]
     ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
-        let queryString = urlEncoder.encode(fields)
+        let queryString = urlEncoder.encodeForm(fields)
         let data = Data(queryString.utf8)
         let allocator = ByteBufferAllocator()
         var buffer = allocator.buffer(capacity: data.count)
