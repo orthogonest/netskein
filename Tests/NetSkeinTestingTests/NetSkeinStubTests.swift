@@ -4,9 +4,8 @@ import NIOCore
 import NIOHTTP1
 import Testing
 
-@testable import NetSkein
+@testable import NetSkeinTesting
 
-@Suite("NetSkeinStub Structural Analysis")
 struct NetSkeinStubTests {
     struct MockStubOutageError: Error, CustomStringConvertible, Sendable {
         var description: String { "Simulated physical socket dropout error." }

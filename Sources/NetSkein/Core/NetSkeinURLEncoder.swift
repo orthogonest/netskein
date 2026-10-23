@@ -6,7 +6,7 @@ public struct NetSkeinURLEncoder: Sendable {
     private let pathAllowedCharacters: CharacterSet
     private let formAllowedCharacters: CharacterSet
 
-    internal var _percentEncode: @Sendable (String, CharacterSet) -> String? = {
+    var _percentEncode: @Sendable (String, CharacterSet) -> String? = {
         string,
         allowedCharacters in
         string.addingPercentEncoding(withAllowedCharacters: allowedCharacters)

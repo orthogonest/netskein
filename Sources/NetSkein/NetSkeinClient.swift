@@ -19,15 +19,15 @@ public protocol HTTPClientProtocol: Sendable {
 
 extension HTTPClient: HTTPClientProtocol {}
 
-public final class NetSkeinClient: Sendable {
-    let underlyingClient: any HTTPClientProtocol
+public final class NetSkeinClient<Client: HTTPClientProtocol>: Sendable {
+    let underlyingClient: Client
     let defaultHeaders: HTTPHeaders
     let cookieJar: NetSkeinCookieJar?
     let logger: Logger
     let urlEncoder: NetSkeinURLEncoder
 
     public init(
-        underlyingClient: any HTTPClientProtocol,
+        underlyingClient: Client,
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: NetSkeinCookieJar? = nil,
         logger: Logger = Logger(label: Label.identifier),
@@ -39,7 +39,9 @@ public final class NetSkeinClient: Sendable {
         self.logger = logger
         self.urlEncoder = urlEncoder
     }
+}
 
+extension NetSkeinClient where Client == HTTPClient {
     public convenience init(defaultHeaders: HTTPHeaders = .init()) {
         let client = HTTPClient(eventLoopGroupProvider: .singleton, configuration: .init())
         self.init(underlyingClient: client, defaultHeaders: defaultHeaders)
@@ -51,31 +53,31 @@ public final class NetSkeinClient: Sendable {
 }
 
 extension NetSkeinClient {
-    public func get(_ url: String) -> RequestBuilder<BodyIsBlocked, EmptyBody> {
+    public func get(_ url: String) -> RequestBuilder<Client, BodyIsBlocked, EmptyBody> {
         RequestBuilder(client: self, method: .GET, url: url, urlEncoder: urlEncoder)
     }
 
-    public func post(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+    public func post(_ url: String) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
         RequestBuilder(client: self, method: .POST, url: url, urlEncoder: urlEncoder)
     }
 
-    public func put(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+    public func put(_ url: String) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
         RequestBuilder(client: self, method: .PUT, url: url, urlEncoder: urlEncoder)
     }
 
-    public func patch(_ url: String) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
+    public func patch(_ url: String) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
         RequestBuilder(client: self, method: .PATCH, url: url, urlEncoder: urlEncoder)
     }
 
-    public func delete(_ url: String) -> RequestBuilder<BodyIsBlocked, EmptyBody> {
+    public func delete(_ url: String) -> RequestBuilder<Client, BodyIsBlocked, EmptyBody> {
         RequestBuilder(client: self, method: .DELETE, url: url, urlEncoder: urlEncoder)
     }
 
     public func request(
         _ method: HTTPMethod,
         url: String
-    ) -> RequestBuilder<BodyIsAllowed, EmptyBody> {
-        RequestBuilder<BodyIsAllowed, EmptyBody>(
+    ) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
+        RequestBuilder<Client, BodyIsAllowed, EmptyBody>(
             client: self,
             method: method,
             url: url,
@@ -116,9 +118,6 @@ public struct NetSkeinClientBuilder: Sendable {
     private var acceptInvalidCertificates: Bool
     private var logger: Logger
 
-    private var stubs: [NetSkeinStub]
-    private var stubOnShutdown: (@Sendable () async throws -> Void)?
-
     public init() {
         connectTimeout = .seconds(10)
         readTimeout = .seconds(30)
@@ -130,7 +129,6 @@ public struct NetSkeinClientBuilder: Sendable {
         decompressionLimit = .size(10 * 1024 * 1024)
         acceptInvalidCertificates = false
         logger = Logger(label: Label.identifier)
-        stubs = []
     }
 }
 
@@ -232,40 +230,7 @@ extension NetSkeinClientBuilder {
 }
 
 extension NetSkeinClientBuilder {
-    @discardableResult
-    public func addStubs(_ stubs: [NetSkeinStub]) -> Self {
-        var copy = self
-        copy.stubs.append(contentsOf: stubs)
-        return copy
-    }
-
-    @discardableResult
-    public func addStub(_ stub: NetSkeinStub) -> Self {
-        var copy = self
-        copy.stubs.append(stub)
-        return copy
-    }
-
-    @discardableResult
-    public func stubOnShutdown(_ onShutdown: @escaping @Sendable () async throws -> Void) -> Self {
-        var copy = self
-        copy.stubOnShutdown = onShutdown
-        return copy
-    }
-}
-
-extension NetSkeinClientBuilder {
-    public func build() -> NetSkeinClient {
-        if !stubs.isEmpty {
-            let client = NetSkeinHTTPClientMock(stubs: stubs, onShutdown: stubOnShutdown)
-            return NetSkeinClient(
-                underlyingClient: client,
-                defaultHeaders: defaultHeaders,
-                cookieJar: cookieJar,
-                logger: logger
-            )
-        }
-
+    public func build() -> NetSkeinClient<HTTPClient> {
         var config = HTTPClient.Configuration()
 
         config.timeout = HTTPClient.Configuration.Timeout(

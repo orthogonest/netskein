@@ -18,8 +18,12 @@ public protocol RequestBodyTag: Sendable {}
 public struct EmptyBody: RequestBodyTag {}
 public struct FixedBody: RequestBodyTag {}
 
-public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
-    private let client: NetSkeinClient
+public struct RequestBuilder<
+    Client: HTTPClientProtocol,
+    Method: HTTPMethodTag,
+    Payload: RequestBodyTag
+> {
+    private let client: NetSkeinClient<Client>
     private var method: HTTPMethod
     private var url: String
     private var headers: HTTPHeaders
@@ -30,7 +34,7 @@ public struct RequestBuilder<Method: HTTPMethodTag, Payload: RequestBodyTag> {
     private let fileManager: FileManager
 
     public init(
-        client: NetSkeinClient,
+        client: NetSkeinClient<Client>,
         method: HTTPMethod,
         url: String,
         headers: HTTPHeaders? = nil,
@@ -132,7 +136,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
     @discardableResult
     public func form(
         _ fields: [String: String]
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         let queryString = urlEncoder.encodeForm(fields)
         let data = Data(queryString.utf8)
         let allocator = ByteBufferAllocator()
@@ -143,7 +147,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
         copy.body = .bytes(buffer)
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/x-www-form-urlencoded")
 
-        return RequestBuilder<Method, FixedBody>(
+        return RequestBuilder<Client, Method, FixedBody>(
             client: copy.client,
             method: copy.method,
             url: copy.url,
@@ -159,7 +163,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
     @discardableResult
     public func json(
         _ bodyObject: some Encodable
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         do {
             let data = try JSONEncoder().encode(bodyObject)
             let allocator = ByteBufferAllocator()
@@ -170,7 +174,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             copy.body = .bytes(buffer)
             copy.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
 
-            return RequestBuilder<Method, FixedBody>(
+            return RequestBuilder<Client, Method, FixedBody>(
                 client: copy.client,
                 method: copy.method,
                 url: copy.url,
@@ -191,7 +195,9 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
     }
 
     @discardableResult
-    public func multipart(_ form: NetSkeinMultipartForm) -> RequestBuilder<Method, FixedBody> {
+    public func multipart(
+        _ form: NetSkeinMultipartForm
+    ) -> RequestBuilder<Client, Method, FixedBody> {
         var copy = self
         copy.body = .bytes(form.bytes())
         copy.headers.replaceOrAdd(
@@ -199,7 +205,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             value: "multipart/form-data; boundary=\(form.boundary)"
         )
 
-        return RequestBuilder<Method, FixedBody>(
+        return RequestBuilder<Client, Method, FixedBody>(
             client: copy.client,
             method: copy.method,
             url: copy.url,
@@ -216,7 +222,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
     public func stream(
         fileAtPath path: String,
         chunkSize: Int = 64 * 1024
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         guard
             let fileAttributes = try? fileManager.attributesOfItem(atPath: path),
             let fileSize = fileAttributes[.size] as? Int64
@@ -265,7 +271,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
         copy.headers.replaceOrAdd(name: "Transfer-Encoding", value: "chunked")
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
 
-        return RequestBuilder<Method, FixedBody>(
+        return RequestBuilder<Client, Method, FixedBody>(
             client: copy.client,
             method: copy.method,
             url: copy.url,
@@ -281,8 +287,8 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
 
 extension RequestBuilder where Method == BodyIsBlocked, Payload == EmptyBody {
     @discardableResult
-    public func dangerouslyAllowBody() -> RequestBuilder<BodyIsAllowed, EmptyBody> {
-        RequestBuilder<BodyIsAllowed, EmptyBody>(
+    public func dangerouslyAllowBody() -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
+        RequestBuilder<Client, BodyIsAllowed, EmptyBody>(
             client: self.client,
             method: self.method,
             url: self.url,
@@ -304,7 +310,7 @@ extension RequestBuilder where Method == BodyIsBlocked {
     )
     public func form(
         _ fields: [String: String]
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -315,7 +321,7 @@ extension RequestBuilder where Method == BodyIsBlocked {
     )
     public func json(
         _ bodyObject: some Encodable
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -324,7 +330,9 @@ extension RequestBuilder where Method == BodyIsBlocked {
         unavailable,
         message: "This HTTP method is forbidden from holding a request body payload."
     )
-    public func multipart(_ form: NetSkeinMultipartForm) -> RequestBuilder<Method, FixedBody> {
+    public func multipart(
+        _ form: NetSkeinMultipartForm
+    ) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -336,7 +344,7 @@ extension RequestBuilder where Method == BodyIsBlocked {
     public func stream(
         fileAtPath path: String,
         chunkSize: Int = 64 * 1024
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 }
@@ -350,7 +358,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
     )
     public func form(
         _ fields: [String: String]
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -362,7 +370,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
     )
     public func json(
         _ bodyObject: some Encodable
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -374,7 +382,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
     )
     public func multipart(
         _ form: NetSkeinMultipartForm
-    ) -> RequestBuilder<Method, FixedBody> {
+    ) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 
@@ -387,7 +395,7 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
     public func stream(
         fileAtPath path: String,
         chunkSize: Int = 64 * 1024
-    ) throws(NetSkeinError) -> RequestBuilder<Method, FixedBody> {
+    ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 }

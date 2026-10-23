@@ -6,6 +6,7 @@ import NIOHTTP1
 import Testing
 
 @testable import NetSkein
+@testable import NetSkeinTesting
 
 @Suite("RequestBuilder Comprehensive Coverage Analysis")
 struct RequestBuilderTests {
@@ -27,7 +28,7 @@ extension RequestBuilderTests {
     )
     func testFluentPropertyMutations() async throws {
         let client = NetSkeinClient()
-        let request = RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let request = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: "https://netskein.local"
@@ -70,7 +71,7 @@ extension RequestBuilderTests {
         let client = NetSkeinClient()
         let invalidBaseURL = "1https://netskein.local"
 
-        let request = RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let request = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: invalidBaseURL
@@ -96,14 +97,14 @@ extension RequestBuilderTests {
     )
     func testDangerouslyAllowBodyGenericPathUnlocking() async throws {
         let client = NetSkeinClient()
-        let request = RequestBuilder<BodyIsBlocked, EmptyBody>(
+        let request = RequestBuilder<HTTPClient, BodyIsBlocked, EmptyBody>(
             client: client,
             method: .GET,
             url: "https://netskein.local"
         )
         .dangerouslyAllowBody()
 
-        #expect(type(of: request) == RequestBuilder<BodyIsAllowed, EmptyBody>.self)
+        #expect(type(of: request) == RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>.self)
 
         try await client.shutdown()
     }
@@ -117,7 +118,7 @@ extension RequestBuilderTests {
     )
     func testFormPayloadConversion() async throws {
         let client = NetSkeinClient()
-        let request = try RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let request = try RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: "https://netskein.local"
@@ -167,7 +168,7 @@ extension RequestBuilderTests {
     func testJSONPayloadConversion() async throws {
         let client = NetSkeinClient()
         let payload = SamplePostPayload(title: "Strict Concurrency", category: "Core Development")
-        let request = try RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let request = try RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .PUT,
             url: "https://netskein.local"
@@ -220,7 +221,7 @@ extension RequestBuilderTests {
         let malformedPayload = MalformedFloatPayload()
 
         #expect(throws: NetSkeinError.self) {
-            _ = try RequestBuilder<BodyIsAllowed, EmptyBody>(
+            _ = try RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
                 client: client,
                 method: .PUT,
                 url: "https://netskein.local"
@@ -241,7 +242,7 @@ extension RequestBuilderTests {
             .text(name: "attachment_meta", value: "Snapshot code artifact")
             .build()
 
-        let request = RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let request = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: "https://netskein.local"
@@ -267,7 +268,7 @@ extension RequestBuilderTests {
     )
     func testStreamSuccessfulExecutionFlow() async throws {
         let client = NetSkeinClient()
-        let builder = RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let builder = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: "https://netskein.local"
@@ -343,7 +344,7 @@ extension RequestBuilderTests {
 
         let client = NetSkeinClient()
 
-        let mockBuilder = RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let mockBuilder = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: "https://netskein.local",
@@ -362,7 +363,7 @@ extension RequestBuilderTests {
     )
     func testStreamInvalidFilePathThrows() async throws {
         let client = NetSkeinClient()
-        let builder = RequestBuilder<BodyIsAllowed, EmptyBody>(
+        let builder = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
             client: client,
             method: .POST,
             url: "https://netskein.local"
@@ -416,7 +417,7 @@ extension RequestBuilderTests {
             )
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .cookieStore(cookieJar)
             .addStubs([firstStub, secondStub])
             .build()
@@ -464,7 +465,7 @@ extension RequestBuilderTests {
             )
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .cookieStore(cookieJar)
             .addStub(stub)
             .build()
@@ -491,7 +492,7 @@ extension RequestBuilderTests {
             outcome: .failure(HTTPClientError.remoteConnectionClosed)
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(brokenStub)
             .build()
 
@@ -516,7 +517,7 @@ extension RequestBuilderTests {
             outcome: .failure(NetSkeinUnknownFailureStub())
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(anomalyStub)
             .build()
 
@@ -546,7 +547,7 @@ extension RequestBuilderTests {
             )
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(streamingStub)
             .build()
 
@@ -587,7 +588,7 @@ extension RequestBuilderTests {
             )
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .cookieStore(cookieJar)
             .addStub(streamingStub)
             .build()
@@ -614,7 +615,7 @@ extension RequestBuilderTests {
             outcome: .failure(HTTPClientError.remoteConnectionClosed)
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(brokenStub)
             .build()
 
@@ -640,7 +641,7 @@ extension RequestBuilderTests {
             outcome: .failure(AnonymousStreamCrash())
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(brokenStub)
             .build()
 
@@ -677,7 +678,7 @@ extension RequestBuilderTests {
             )
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(successStub)
             .build()
 
@@ -744,7 +745,7 @@ extension RequestBuilderTests {
             )
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .cookieStore(cookieJar)
             .addStub(successStub)
             .build()
@@ -767,7 +768,7 @@ extension RequestBuilderTests {
             outcome: .success(status: .notFound, headers: HTTPHeaders(), body: nil)
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(badStatusStub)
             .build()
 
@@ -798,7 +799,7 @@ extension RequestBuilderTests {
             outcome: .failure(AnonymousDownloadCrash())
         )
 
-        let client = NetSkeinClient.builder()
+        let client = NetSkeinClient.testing()
             .addStub(brokenStub)
             .build()
 
