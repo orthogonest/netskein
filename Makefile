@@ -65,7 +65,10 @@ COV_PROFILE  := .build/out/Products/Debug/codecov/default.profdata
 COV_OUT_DIR  := .build/coverage-report
 
 ## Generate HTML code coverage report
-coverage: _prepare-cov _testing
+coverage: 
+	@clear
+	@$(MAKE) _prepare-cov
+	@$(MAKE) _testing
 	@echo "$(CYAN)>>> Generating Coverage Report...$(RESET)"
 	@xcrun llvm-cov show \
 	  $(COV_BINARY) \
