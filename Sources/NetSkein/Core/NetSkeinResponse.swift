@@ -32,8 +32,22 @@ public struct NetSkeinResponse: Sendable {
 
 extension NetSkeinResponse {
     @discardableResult
-    public func errorForStatus() throws(NetSkeinError) -> Self {
+    public func validate() throws(NetSkeinError) -> Self {
         guard status.code >= 200 && status.code < 300 else { throw .badStatus(status) }
+        return self
+    }
+
+    @discardableResult
+    public func validate<E: Error & Decodable>(
+        decoding _: E.Type,
+        decoder: JSONDecoder = JSONDecoder()
+    ) throws -> Self {
+        guard status.code >= 200 && status.code < 300 else {
+            if let body, let decodedError = try? decoder.decode(E.self, from: body) {
+                throw decodedError
+            }
+            throw NetSkeinError.badStatus(status)
+        }
         return self
     }
 

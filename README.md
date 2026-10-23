@@ -23,7 +23,7 @@ Built natively on top of **SwiftNIO** and `async-http-client`, NetSkein provides
   - `.text()` — Extracts payload into clear Swift Strings.
   - `.bytes()` — Retrieves raw `ByteBuffer` allocations.
   - `.json(Type.self)` — Type-safe, automatic `Decodable` object mapping.
-- **Error for Status:** Expressive status code validation boundary mapping via `.errorForStatus()`, throwing strongly-typed errors for `4xx` and `5xx` server behaviors.
+- **Validate Response Status:** Expressive status code validation boundary mapping via `.validate()`, throwing strongly-typed errors for `4xx` and `5xx` server behaviors.
 
 ### 2. Runtime & Connection Performance
 
@@ -91,7 +91,7 @@ let client = NetSkeinClient.builder().connectTimeout(.seconds(5)).build()
 do {
     let profile = try await client.get("https://example.com")
         .header("Authorization", "Bearer your_token_here").query(["version": "2.0"]).send()
-        .errorForStatus()  // Validate 2xx boundaries
+        .validate()  // Validate 2xx boundaries
         .json(UserProfile.self)  // Decode safely and non-destructively
 
     print("Welcome back, \(profile.username)!")
