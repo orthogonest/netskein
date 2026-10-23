@@ -26,10 +26,27 @@ let package = Package(
             ],
             path: "Sources/NetSkein",
         ),
+        .target(
+            name: "NetSkeinTesting",
+            dependencies: [
+                "NetSkein",
+                .product(name: "AsyncHTTPClient", package: "async-http-client"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+            ],
+            path: "Sources/NetSkeinTesting",
+        ),
         .testTarget(
             name: "NetSkeinTests",
-            dependencies: ["NetSkein"],
+            dependencies: ["NetSkein", "NetSkeinTesting"],
             path: "Tests/NetSkeinTests",
+        ),
+        .testTarget(
+            name: "NetSkeinTestingTests",
+            dependencies: ["NetSkein", "NetSkeinTesting"],
+            path: "Tests/NetSkeinTestingTests",
         ),
     ]
 )
