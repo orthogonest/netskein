@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Logging
 import NIOCore
 import NIOHTTP1
 
@@ -22,27 +23,27 @@ public struct RequestBuilder<
     Client: HTTPClientProtocol,
     Method: HTTPMethodTag,
     Payload: RequestBodyTag
-> {
+>: Sendable {
     private let client: NetSkeinClient<Client>
     private var method: HTTPMethod
     private var url: String
     private var headers: HTTPHeaders
-    private var body: HTTPClientRequest.Body?
+    private var body: BodySource
     private var maxResponseBytes: Int
     private var timeout: TimeAmount?
+    private var retryPolicy: RetryPolicy?
     private let urlEncoder: NetSkeinURLEncoder
-    private let fileManager: FileManager
 
-    public init(
+    init(
         client: NetSkeinClient<Client>,
         method: HTTPMethod,
         url: String,
         headers: HTTPHeaders? = nil,
-        body: HTTPClientRequest.Body? = nil,
+        body: BodySource = .none,
         maxResponseBytes: Int = 10 * 1024 * 1024,
         timeout: TimeAmount? = nil,
+        retryPolicy: RetryPolicy? = nil,
         urlEncoder: NetSkeinURLEncoder = .default,
-        fileManager: FileManager = .default
     ) {
         self.client = client
         self.method = method
@@ -51,37 +52,33 @@ public struct RequestBuilder<
         self.body = body
         self.maxResponseBytes = maxResponseBytes
         self.timeout = timeout
+        self.retryPolicy = retryPolicy
         self.urlEncoder = urlEncoder
-        self.fileManager = fileManager
     }
 }
 
-extension RequestBuilder {
-    private func getCookie() -> String? {
-        guard
-            let jar = client.cookieJar,
-            let urlObject = URL(string: url),
-            let host = urlObject.host,
-            let cookieValue = jar.cookieHeader(for: host)
-        else { return nil }
-        return cookieValue
-    }
-
-    private func setCookie(cookieHeaders: [String]) {
-        guard
-            let jar = client.cookieJar,
-            let urlObject = URL(string: url),
-            let host = urlObject.host
-        else { return }
-
-        for cookie in cookieHeaders {
-            let components = cookie.components(separatedBy: ";")
-            guard let parts = components.first?.components(separatedBy: "="), parts.count == 2
-            else { continue }
-            let name = parts[0].trimmingCharacters(in: .whitespaces)
-            let value = parts[1].trimmingCharacters(in: .whitespaces)
-            jar.setCookie(host: host, name: name, value: value)
-        }
+extension RequestBuilder where Payload == EmptyBody {
+    public init(
+        client: NetSkeinClient<Client>,
+        method: HTTPMethod,
+        url: String,
+        headers: HTTPHeaders? = nil,
+        maxResponseBytes: Int = 10 * 1024 * 1024,
+        timeout: TimeAmount? = nil,
+        retryPolicy: RetryPolicy? = nil,
+        urlEncoder: NetSkeinURLEncoder = .default,
+    ) {
+        self.init(
+            client: client,
+            method: method,
+            url: url,
+            headers: headers,
+            body: .none,
+            maxResponseBytes: maxResponseBytes,
+            timeout: timeout,
+            retryPolicy: retryPolicy,
+            urlEncoder: urlEncoder,
+        )
     }
 }
 
@@ -130,6 +127,13 @@ extension RequestBuilder {
         copy.timeout = duration
         return copy
     }
+
+    @discardableResult
+    public func retry(_ policy: RetryPolicy) -> Self {
+        var copy = self
+        copy.retryPolicy = policy
+        return copy
+    }
 }
 
 extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
@@ -155,8 +159,8 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
+            retryPolicy: copy.retryPolicy,
             urlEncoder: copy.urlEncoder,
-            fileManager: copy.fileManager
         )
     }
 
@@ -182,8 +186,8 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
                 body: copy.body,
                 maxResponseBytes: copy.maxResponseBytes,
                 timeout: copy.timeout,
+                retryPolicy: copy.retryPolicy,
                 urlEncoder: copy.urlEncoder,
-                fileManager: copy.fileManager
             )
         } catch {
             throw .custom(
@@ -213,18 +217,19 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
+            retryPolicy: copy.retryPolicy,
             urlEncoder: copy.urlEncoder,
-            fileManager: copy.fileManager
         )
     }
 
     @discardableResult
     public func stream(
         fileAtPath path: String,
-        chunkSize: Int = 64 * 1024
+        chunkSize: Int = 64 * 1024,
+        onProgress: UploadProgress? = nil
     ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         guard
-            let fileAttributes = try? fileManager.attributesOfItem(atPath: path),
+            let fileAttributes = try? FileManager.default.attributesOfItem(atPath: path),
             let fileSize = fileAttributes[.size] as? Int64
         else {
             throw .custom(
@@ -233,41 +238,20 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             )
         }
 
-        guard let fileHandle = FileHandle(forReadingAtPath: path) else {
+        guard FileManager.default.isReadableFile(atPath: path) else {
             throw .custom(
                 kind: .ioFailure,
-                message: "Unable to open file for reading at path: \(path)"
+                message: "Unable to read file at path: \(path)"
             )
         }
 
-        let chunkedStream = AsyncStream<ByteBuffer> { continuation in
-            continuation.onTermination = { _ in
-                try? fileHandle.close()
-            }
-
-            Task {
-                do {
-                    while true {
-                        guard
-                            let data = try fileHandle.read(upToCount: chunkSize),
-                            !data.isEmpty
-                        else {
-                            continuation.finish()
-                            break
-                        }
-                        let allocator = ByteBufferAllocator()
-                        var buffer = allocator.buffer(capacity: data.count)
-                        buffer.writeBytes(data)
-                        continuation.yield(buffer)
-                    }
-                } catch {
-                    continuation.finish()
-                }
-            }
-        }
-
         var copy = self
-        copy.body = .stream(chunkedStream, length: .known(fileSize))
+        copy.body = .file(
+            path: path,
+            chunkSize: chunkSize,
+            fileSize: fileSize,
+            onProgress: onProgress
+        )
         copy.headers.replaceOrAdd(name: "Transfer-Encoding", value: "chunked")
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
 
@@ -279,8 +263,8 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == EmptyBody {
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
+            retryPolicy: copy.retryPolicy,
             urlEncoder: copy.urlEncoder,
-            fileManager: copy.fileManager
         )
     }
 }
@@ -296,8 +280,8 @@ extension RequestBuilder where Method == BodyIsBlocked, Payload == EmptyBody {
             body: self.body,
             maxResponseBytes: self.maxResponseBytes,
             timeout: self.timeout,
+            retryPolicy: self.retryPolicy,
             urlEncoder: self.urlEncoder,
-            fileManager: self.fileManager
         )
     }
 }
@@ -343,7 +327,8 @@ extension RequestBuilder where Method == BodyIsBlocked {
     )
     public func stream(
         fileAtPath path: String,
-        chunkSize: Int = 64 * 1024
+        chunkSize: Int = 64 * 1024,
+        onProgress: UploadProgress? = nil
     ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
@@ -394,275 +379,46 @@ extension RequestBuilder where Method == BodyIsAllowed, Payload == FixedBody {
     )
     public func stream(
         fileAtPath path: String,
-        chunkSize: Int = 64 * 1024
+        chunkSize: Int = 64 * 1024,
+        onProgress: UploadProgress? = nil
+
     ) throws(NetSkeinError) -> RequestBuilder<Client, Method, FixedBody> {
         fatalError("Unavailable at compile time")
     }
 }
 
 extension RequestBuilder {
+    private var executor: RequestExecutor<Client> {
+        RequestExecutor(
+            client: client,
+            method: method,
+            url: url,
+            headers: headers,
+            body: body,
+            timeout: timeout,
+            retryPolicy: retryPolicy,
+            maxResponseBytes: maxResponseBytes,
+        )
+    }
+}
+
+extension RequestBuilder {
     public func send() async throws(NetSkeinError) -> NetSkeinResponse {
-        var activeHeaders = headers
-
-        let requestID = UUID().uuidString
-        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
-
-        var clientLogger = client.logger
-        clientLogger[metadataKey: "request_id"] = .string(requestID)
-        clientLogger[metadataKey: "http_method"] = .string(method.rawValue)
-        clientLogger[metadataKey: "url"] = .string(url)
-
-        clientLogger.info("Initiating outbound network request")
-
-        if let cookieValue = getCookie() {
-            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
-        }
-
-        var request = HTTPClientRequest(url: url)
-        request.method = method
-        request.headers = activeHeaders
-        request.body = body
-
-        let startTime = DispatchTime.now()
-
-        do {
-            let response = try await client.underlyingClient
-                .execute(request, timeout: timeout ?? .seconds(30), logger: clientLogger)
-
-            let endTime = DispatchTime.now()
-            let duration =
-                Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds)
-                / NanoSeconds.toSeconds
-            let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
-
-            clientLogger.info(
-                "Request completed successfully",
-                metadata: [
-                    "request_id": .string(activeResponseID),
-                    "status_code": .string("\(response.status.code)"),
-                    "duration_seconds": .string(String(format: "%.4f", duration)),
-                ]
-            )
-
-            let cookieHeaders = response.headers["Set-Cookie"]
-            setCookie(cookieHeaders: cookieHeaders)
-
-            return try await NetSkeinResponse(
-                underlyingResponse: response,
-                maxBytes: maxResponseBytes
-            )
-        } catch let error as NetSkeinError {
-            throw error
-        } catch {
-            clientLogger.error(
-                "Network request failed",
-                metadata: [
-                    "request_id": .string(requestID),
-                    "error_description": .string(error.localizedDescription),
-                ]
-            )
-            throw .custom(
-                kind: .networkFailure,
-                message: "Network execution failed: \(error.localizedDescription)",
-                underlyingError: error
-            )
-        }
+        try await executor.execute()
     }
 
+    @discardableResult
     public func send(
-        _ onChunk:
-            @Sendable (
-                _ chunk: ByteBuffer,
-                _ bytesReceived: Int64,
-                _ bytesTotal: Int64?
-            ) async throws -> Void
-    ) async throws(NetSkeinError) {
-        var activeHeaders = headers
-
-        let requestID = UUID().uuidString
-        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
-
-        var clientLogger = client.logger
-        clientLogger[metadataKey: "request_id"] = .string(requestID)
-        clientLogger[metadataKey: "http_method"] = .string(method.rawValue)
-        clientLogger[metadataKey: "url"] = .string(url)
-
-        clientLogger.info("Initiating outbound streaming download request")
-
-        if let cookieValue = getCookie() {
-            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
-        }
-
-        var request = HTTPClientRequest(url: url)
-        request.method = method
-        request.headers = activeHeaders
-        request.body = body
-
-        let startTime = DispatchTime.now()
-
-        do {
-            let response = try await client.underlyingClient.execute(
-                request,
-                timeout: timeout ?? .seconds(30),
-                logger: clientLogger
-            )
-
-            let endTime = DispatchTime.now()
-            let duration =
-                Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds)
-                / NanoSeconds.toSeconds
-            let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
-
-            clientLogger.info(
-                "Streaming response head received successfully",
-                metadata: [
-                    "request_id": .string(activeResponseID),
-                    "status_code": .string("\(response.status.code)"),
-                    "duration_seconds": .string(String(format: "%.4f", duration)),
-                ]
-            )
-
-            let cookieHeaders = response.headers["Set-Cookie"]
-            setCookie(cookieHeaders: cookieHeaders)
-
-            let expectedBytes = response.headers.first(name: "content-length").flatMap(Int64.init)
-            var receivedBytes: Int64 = 0
-
-            for try await buffer in response.body {
-                receivedBytes += Int64(buffer.readableBytes)
-                try await onChunk(buffer, receivedBytes, expectedBytes)
-            }
-
-            clientLogger.info(
-                "Finished streaming response body. Total bytes received: \(receivedBytes)"
-            )
-        } catch let error as NetSkeinError {
-            throw error
-        } catch {
-            clientLogger.error(
-                "Streaming network request execution failed",
-                metadata: [
-                    "request_id": .string(requestID),
-                    "error_description": .string(error.localizedDescription),
-                ]
-            )
-            throw .custom(
-                kind: .networkFailure,
-                message: "Streaming network execution failed: \(error.localizedDescription)",
-                underlyingError: error
-            )
-        }
+        _ onChunk: ChunkHandler
+    ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
+        try await executor.execute(onChunk)
     }
 
     public func download(
         toFileAtPath path: String,
-        onProgress: (@Sendable (_ bytesReceived: Int64, _ bytesTotal: Int64?) -> Void)? = nil
+        resumption: DownloadResumption = .disabled,
+        onProgress: DownloadProgress? = nil
     ) async throws(NetSkeinError) {
-        var activeHeaders = headers
-
-        let requestID = UUID().uuidString
-        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
-
-        var clientLogger = client.logger
-        clientLogger[metadataKey: "request_id"] = .string(requestID)
-        clientLogger[metadataKey: "http_method"] = .string(method.rawValue)
-        clientLogger[metadataKey: "url"] = .string(url)
-
-        clientLogger.info("Initiating outbound streaming download request")
-
-        if let cookieValue = getCookie() {
-            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
-        }
-
-        guard
-            fileManager.createFile(atPath: path, contents: nil),
-            let fileHandle = FileHandle(forWritingAtPath: path)
-        else {
-            throw .custom(
-                kind: .ioFailure,
-                message: "File could not be created or written to at the specified path: \(path)."
-            )
-        }
-
-        var request = HTTPClientRequest(url: url)
-        request.method = method
-        request.headers = activeHeaders
-        request.body = body
-
-        let startTime = DispatchTime.now()
-
-        do {
-            let response = try await client.underlyingClient.execute(
-                request,
-                timeout: timeout ?? .seconds(30),
-                logger: clientLogger
-            )
-
-            let endTime = DispatchTime.now()
-            let duration =
-                Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds)
-                / NanoSeconds.toSeconds
-            let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
-
-            clientLogger.info(
-                "Streaming download completed successfully",
-                metadata: [
-                    "request_id": .string(activeResponseID),
-                    "status_code": .string("\(response.status.code)"),
-                    "duration_seconds": .string(String(format: "%.4f", duration)),
-                ]
-            )
-
-            guard response.status.code >= 200 && response.status.code < 300 else {
-                try? fileHandle.close()
-                throw NetSkeinError.badStatus(response.status)
-            }
-
-            let cookieHeaders = response.headers["Set-Cookie"]
-            setCookie(cookieHeaders: cookieHeaders)
-
-            let expectedBytes = response.headers.first(name: "content-length").flatMap(Int64.init)
-            var receivedBytes: Int64 = 0
-
-            for try await buffer in response.body {
-                let currentChunkSize = Int64(buffer.readableBytes)
-
-                try buffer.withUnsafeReadableBytes { bytes in
-                    guard let baseAddress = bytes.baseAddress else { return }
-                    let data = Data(
-                        bytesNoCopy: UnsafeMutableRawPointer(mutating: baseAddress),
-                        count: bytes.count,
-                        deallocator: .none
-                    )
-                    try fileHandle.write(contentsOf: data)
-                }
-
-                receivedBytes += currentChunkSize
-                onProgress?(receivedBytes, expectedBytes)
-            }
-
-            try fileHandle.close()
-
-            clientLogger.info(
-                "Streaming download completed successfully. Total bytes written: \(receivedBytes)"
-            )
-        } catch let error as NetSkeinError {
-            try? fileHandle.close()
-            throw error
-        } catch {
-            try? fileHandle.close()
-            clientLogger.error(
-                "Streaming download request failed",
-                metadata: [
-                    "request_id": .string(requestID),
-                    "error_description": .string(error.localizedDescription),
-                ]
-            )
-            throw .custom(
-                kind: .networkFailure,
-                message: "Streaming download failed: \(error.localizedDescription)",
-                underlyingError: error
-            )
-        }
+        try await executor.execute(downloadTo: path, resumption: resumption, onProgress: onProgress)
     }
 }
