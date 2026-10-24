@@ -6,21 +6,21 @@ import Testing
 
 @testable import NetSkeinTesting
 
-struct NetSkeinStubTests {
+struct HTTPStubTests {
     struct MockStubOutageError: Error, CustomStringConvertible, Sendable {
         var description: String { "Simulated physical socket dropout error." }
     }
 
     @Test(
-        "NetSkeinStubTests: Verifies static URL initializer locks precise string matches accurately"
+        "HTTPStubTests: Verifies static URL initializer locks precise string matches accurately"
     )
     func testStaticURLInitializer() {
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://netskein.mock",
             delay: .seconds(2),
             requestValidator: { _ in },
-            outcome: .success(status: .ok, headers: HTTPHeaders(), body: nil)
+            outcome: .response(status: .ok, headers: HTTPHeaders(), body: nil)
         )
 
         #expect(stub.method == .GET)
@@ -33,15 +33,15 @@ struct NetSkeinStubTests {
     }
 
     @Test(
-        "NetSkeinStubTests: Verifies closure-based urlMatcher initialization captures custom dynamic prefix pattern constraints"
+        "HTTPStubTests: Verifies closure-based urlMatcher initialization captures custom dynamic prefix pattern constraints"
     )
     func testDynamicURLMatcherInitializer() {
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .POST,
             urlMatcher: { @Sendable url in url.hasPrefix("https://netskein.mock") },
             delay: nil,
             requestValidator: nil,
-            outcome: .failure(MockStubOutageError())
+            outcome: .error(MockStubOutageError())
         )
 
         #expect(stub.method == .POST)
@@ -54,7 +54,7 @@ struct NetSkeinStubTests {
     }
 
     @Test(
-        "NetSkeinStubTests: Assures structural equatable operator resolves equality based on method types, delay, and outcome variants description tracking"
+        "HTTPStubTests: Assures structural equatable operator resolves equality based on method types, delay, and outcome variants description tracking"
     )
     func testStubEquatableLogic() {
         let headersA = HTTPHeaders([("Content-Type", "application/json")])
@@ -62,40 +62,40 @@ struct NetSkeinStubTests {
         let mockBody = ByteBuffer(string: "payload")
 
         // Baseline Stub configuration (delay: nil)
-        let stub1 = NetSkeinStub(
+        let stub1 = HTTPStub(
             method: .GET,
             url: "https://netskein.mock",
             delay: nil,
-            outcome: .success(status: .ok, headers: headersA, body: mockBody)
+            outcome: .response(status: .ok, headers: headersA, body: mockBody)
         )
 
         // Twin Stub layout with identical fields to verify matching parameters behavior
-        let stub2 = NetSkeinStub(
+        let stub2 = HTTPStub(
             method: .GET,
             url: "https://netskein.mock-different-ignored-url",
             delay: nil,
-            outcome: .success(status: .ok, headers: headersB, body: mockBody)
+            outcome: .response(status: .ok, headers: headersB, body: mockBody)
         )
 
-        let stubDifferentMethod = NetSkeinStub(
+        let stubDifferentMethod = HTTPStub(
             method: .POST,
             url: "https://netskein.mock",
             delay: nil,
-            outcome: .success(status: .ok, headers: headersA, body: mockBody)
+            outcome: .response(status: .ok, headers: headersA, body: mockBody)
         )
 
-        let stubDifferentOutcome = NetSkeinStub(
+        let stubDifferentOutcome = HTTPStub(
             method: .GET,
             url: "https://netskein.mock",
             delay: nil,
-            outcome: .failure(MockStubOutageError())
+            outcome: .error(MockStubOutageError())
         )
 
-        let stubDifferentDelay = NetSkeinStub(
+        let stubDifferentDelay = HTTPStub(
             method: .GET,
             url: "https://netskein.mock",
             delay: .seconds(3),  // Injected distinct structural delay
-            outcome: .success(status: .ok, headers: headersA, body: mockBody)
+            outcome: .response(status: .ok, headers: headersA, body: mockBody)
         )
 
         #expect(
@@ -117,29 +117,29 @@ struct NetSkeinStubTests {
     }
 
     @Test(
-        "NetSkeinStubTests: Ensures that compliant manual hash functions produce stable and predictable hash outputs based on state layout combinations"
+        "HTTPStubTests: Ensures that compliant manual hash functions produce stable and predictable hash outputs based on state layout combinations"
     )
     func testStubHashableLogic() {
         // Twin layout configuration mapping stable default nil delays
-        let stub1 = NetSkeinStub(
+        let stub1 = HTTPStub(
             method: .PUT,
             url: "https://netskein.mock",
             delay: .seconds(5),
-            outcome: .success(status: .accepted, headers: HTTPHeaders(), body: nil)
+            outcome: .response(status: .accepted, headers: HTTPHeaders(), body: nil)
         )
 
-        let stub2 = NetSkeinStub(
+        let stub2 = HTTPStub(
             method: .PUT,
             url: "https://netskein.mock-different-ignored-url",
             delay: .seconds(5),  // Matches stub1 delay to produce identical hashes
-            outcome: .success(status: .accepted, headers: HTTPHeaders(), body: nil)
+            outcome: .response(status: .accepted, headers: HTTPHeaders(), body: nil)
         )
 
-        let stubWithDifferentHashDelay = NetSkeinStub(
+        let stubWithDifferentHashDelay = HTTPStub(
             method: .PUT,
             url: "https://netskein.mock",
             delay: nil,  // Distinct delay allocation creates a separate hash digest block
-            outcome: .success(status: .accepted, headers: HTTPHeaders(), body: nil)
+            outcome: .response(status: .accepted, headers: HTTPHeaders(), body: nil)
         )
 
         var hasher1 = Hasher()

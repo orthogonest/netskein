@@ -4,9 +4,9 @@ import Testing
 
 @testable import NetSkein
 
-struct NetSkeinMultipartFormTests {
+struct MultipartFormTests {
     @Test(
-        "NetSkeinMultipartFormTests: Verifies explicit initialization holds correct inputs independent of builder"
+        "MultipartFormTests: Verifies explicit initialization holds correct inputs independent of builder"
     )
     func testPublicInitializerLayout() {
         let allocator = ByteBufferAllocator()
@@ -15,7 +15,7 @@ struct NetSkeinMultipartFormTests {
 
         let customBoundary = "CustomMockBoundary123"
         let parts = [
-            NetSkeinMultipartForm.Part(
+            MultipartForm.Part(
                 name: "field",
                 filename: nil,
                 contentType: "text/plain",
@@ -23,7 +23,7 @@ struct NetSkeinMultipartFormTests {
             )
         ]
 
-        let form = NetSkeinMultipartForm(boundary: customBoundary, parts: parts)
+        let form = MultipartForm(boundary: customBoundary, parts: parts)
 
         #expect(form.boundary == customBoundary)
         #expect(form.parts.count == 1)
@@ -32,14 +32,14 @@ struct NetSkeinMultipartFormTests {
     }
 
     @Test(
-        "NetSkeinMultipartFormTests: Ensures estimatedLength perfectly matches manual byte size allocations"
+        "MultipartFormTests: Ensures estimatedLength perfectly matches manual byte size allocations"
     )
     func testEstimatedLengthPrecision() {
         let allocator = ByteBufferAllocator()
         var mockImageBuffer = allocator.buffer(capacity: 5)
         mockImageBuffer.writeBytes([0x01, 0x02, 0x03, 0x04, 0x05])
 
-        let form = NetSkeinMultipartForm.builder()
+        let form = MultipartForm.builder()
             .text(name: "caption", value: "Hello")
             .file(
                 name: "photo",
@@ -78,14 +78,14 @@ struct NetSkeinMultipartFormTests {
     }
 
     @Test(
-        "NetSkeinMultipartFormTests: Verifies that serialized bytes perfectly match the formal multipart payload layout"
+        "MultipartFormTests: Verifies that serialized bytes perfectly match the formal multipart payload layout"
     )
     func testBytesSerializationPayloadLayout() {
         let allocator = ByteBufferAllocator()
         var mockFileBytes = allocator.buffer(capacity: 3)
         mockFileBytes.writeBytes([0x41, 0x42, 0x43])  // "ABC"
 
-        let form = NetSkeinMultipartForm.builder()
+        let form = MultipartForm.builder()
             .text(name: "status", value: "active")
             .file(
                 name: "document",
@@ -118,14 +118,14 @@ struct NetSkeinMultipartFormTests {
     }
 
     @Test(
-        "NetSkeinMultipartFormTests: Ensures estimatedLength matches the actual readable bytes count of the serialized payload"
+        "MultipartFormTests: Ensures estimatedLength matches the actual readable bytes count of the serialized payload"
     )
     func testEstimatedLengthMatchesActualSerializedBytesCount() {
         let allocator = ByteBufferAllocator()
         var randomDataBuffer = allocator.buffer(capacity: 8)
         randomDataBuffer.writeBytes([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80])
 
-        let form = NetSkeinMultipartForm.builder()
+        let form = MultipartForm.builder()
             .text(name: "notes", value: "Swift 6 Concurrency Safe Loops")
             .file(
                 name: "payload",
@@ -142,12 +142,12 @@ struct NetSkeinMultipartFormTests {
     }
 }
 
-struct NetSkeinMultipartFormBuilderTests {
+struct MultipartFormBuilderTests {
     @Test(
-        "NetSkeinMultipartFormBuilderTests: Ensures non-mutating chaining cleanly mutates isolated return instances without side-effects"
+        "MultipartFormBuilderTests: Ensures non-mutating chaining cleanly mutates isolated return instances without side-effects"
     )
     func testNonMutatingBuilderIsolation() {
-        let baseBuilder = NetSkeinMultipartForm.builder()
+        let baseBuilder = MultipartForm.builder()
 
         // Chaining creates independent stack allocations
         let firstDerivation = baseBuilder.text(name: "key1", value: "val1")
@@ -166,10 +166,10 @@ struct NetSkeinMultipartFormBuilderTests {
     }
 
     @Test(
-        "NetSkeinMultipartFormBuilderTests: Verifies text parts are accurately appended and text content matches"
+        "MultipartFormBuilderTests: Verifies text parts are accurately appended and text content matches"
     )
     func testTextPartBuilder() {
-        let form = NetSkeinMultipartForm.builder()
+        let form = MultipartForm.builder()
             .text(name: "username", value: "swift_developer")
             .build()
 
@@ -187,14 +187,14 @@ struct NetSkeinMultipartFormBuilderTests {
     }
 
     @Test(
-        "NetSkeinMultipartFormBuilderTests: Verifies file parts are accurately appended with correct headers and bytes"
+        "MultipartFormBuilderTests: Verifies file parts are accurately appended with correct headers and bytes"
     )
     func testFilePartBuilder() {
         let allocator = ByteBufferAllocator()
         var mockFileBytes = allocator.buffer(capacity: 4)
         mockFileBytes.writeBytes([0x89, 0x50, 0x4E, 0x47])  // PNG Magic bytes
 
-        let form = NetSkeinMultipartForm.builder()
+        let form = MultipartForm.builder()
             .file(
                 name: "avatar",
                 filename: "profile.png",
@@ -213,11 +213,11 @@ struct NetSkeinMultipartFormBuilderTests {
     }
 
     @Test(
-        "NetSkeinMultipartFormBuilderTests: Allocates unique UUID-based boundary tokens across separate instances"
+        "MultipartFormBuilderTests: Allocates unique UUID-based boundary tokens across separate instances"
     )
     func testUniqueBoundaryGeneration() {
-        let form1 = NetSkeinMultipartForm.builder().build()
-        let form2 = NetSkeinMultipartForm.builder().build()
+        let form1 = MultipartForm.builder().build()
+        let form2 = MultipartForm.builder().build()
 
         #expect(form1.boundary != form2.boundary)
         #expect(form1.boundary.contains("NetSkeinBoundary-"))

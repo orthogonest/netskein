@@ -7,12 +7,23 @@ import NIOCore
     import Foundation
 #endif
 
-public struct NetSkeinMultipartForm: Sendable {
+public struct MultipartForm: Sendable {
     public struct Part: Sendable {
         public let name: String
         public let filename: String?
         public let contentType: String?
         public let body: ByteBuffer
+    }
+
+    public struct Builder: Sendable {
+        private let boundary: String
+        private var parts: [MultipartForm.Part]
+
+        public init() {
+            let uniqueID = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            boundary = "NetSkeinBoundary-\(uniqueID)"
+            parts = []
+        }
     }
 
     let boundary: String
@@ -26,10 +37,10 @@ public struct NetSkeinMultipartForm: Sendable {
         self.parts = parts
     }
 
-    public static func builder() -> NetSkeinMultipartFormBuilder { NetSkeinMultipartFormBuilder() }
+    public static func builder() -> Builder { Builder() }
 }
 
-extension NetSkeinMultipartForm {
+extension MultipartForm {
     public var estimatedLength: Int {
         var total = 0
         for part in parts {
@@ -97,18 +108,7 @@ extension NetSkeinMultipartForm {
     }
 }
 
-public struct NetSkeinMultipartFormBuilder: Sendable {
-    private let boundary: String
-    private var parts: [NetSkeinMultipartForm.Part]
-
-    public init() {
-        let uniqueID = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        boundary = "NetSkeinBoundary-\(uniqueID)"
-        parts = []
-    }
-}
-
-extension NetSkeinMultipartFormBuilder {
+extension MultipartForm.Builder {
     @discardableResult
     public func text(name: String, value: String) -> Self {
         let allocator = ByteBufferAllocator()
@@ -117,7 +117,7 @@ extension NetSkeinMultipartFormBuilder {
 
         var copy = self
         copy.parts.append(
-            NetSkeinMultipartForm.Part(name: name, filename: nil, contentType: nil, body: buffer)
+            MultipartForm.Part(name: name, filename: nil, contentType: nil, body: buffer)
         )
         return copy
     }
@@ -131,7 +131,7 @@ extension NetSkeinMultipartFormBuilder {
     ) -> Self {
         var copy = self
         copy.parts.append(
-            NetSkeinMultipartForm.Part(
+            MultipartForm.Part(
                 name: name,
                 filename: filename,
                 contentType: contentType,
@@ -141,7 +141,7 @@ extension NetSkeinMultipartFormBuilder {
         return copy
     }
 
-    public func build() -> NetSkeinMultipartForm {
-        NetSkeinMultipartForm(boundary: boundary, parts: parts)
+    public func build() -> MultipartForm {
+        MultipartForm(boundary: boundary, parts: parts)
     }
 }

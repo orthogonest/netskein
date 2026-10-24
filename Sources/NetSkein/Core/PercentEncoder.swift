@@ -1,7 +1,7 @@
 import Foundation
 
-public struct NetSkeinURLEncoder: Sendable {
-    public static let `default`: Self = NetSkeinURLEncoder()
+public struct PercentEncoder: Sendable {
+    public static let `default`: Self = PercentEncoder()
 
     private let pathAllowedCharacters: CharacterSet
     private let formAllowedCharacters: CharacterSet

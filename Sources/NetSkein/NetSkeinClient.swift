@@ -7,53 +7,42 @@ import NIOHTTP1
 import NIOHTTPCompression
 import NIOSSL
 
-public protocol HTTPClientProtocol: Sendable {
-    func execute(
-        _ request: HTTPClientRequest,
-        timeout: TimeAmount,
-        logger: Logger?
-    ) async throws -> HTTPClientResponse
-
-    func shutdown() async throws
-}
-
-extension HTTPClient: HTTPClientProtocol {}
-
-public final class NetSkeinClient<Client: HTTPClientProtocol>: Sendable {
-    let underlyingClient: Client
+public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
+    let transport: Transport
     let defaultHeaders: HTTPHeaders
-    let cookieJar: NetSkeinCookieJar?
+    let cookieJar: CookieJar?
     let retryPolicy: RetryPolicy
     let logger: Logger
-    let urlEncoder: NetSkeinURLEncoder
+    let percentEncoder: PercentEncoder
 
     public init(
-        underlyingClient: Client,
+        transport: Transport,
         defaultHeaders: HTTPHeaders = .init(),
-        cookieJar: NetSkeinCookieJar? = nil,
+        cookieJar: CookieJar? = nil,
         retryPolicy: RetryPolicy = .disabled,
-        logger: Logger = Logger(label: Label.identifier),
-        urlEncoder: NetSkeinURLEncoder = .default,
+        logger: Logger,
+        percentEncoder: PercentEncoder = .default,
     ) {
-        self.underlyingClient = underlyingClient
+        self.transport = transport
         self.defaultHeaders = defaultHeaders
         self.cookieJar = cookieJar
         self.retryPolicy = retryPolicy
         self.logger = logger
-        self.urlEncoder = urlEncoder
+        self.percentEncoder = percentEncoder
     }
 }
 
-extension NetSkeinClient where Client == HTTPClient {
+extension NetSkeinClient where Transport == HTTPClient {
     public convenience init(
         defaultHeaders: HTTPHeaders = .init(),
         retryPolicy: RetryPolicy = .disabled
     ) {
-        let client = HTTPClient(eventLoopGroupProvider: .singleton, configuration: .init())
+        let transport = HTTPClient(eventLoopGroupProvider: .singleton, configuration: .init())
         self.init(
-            underlyingClient: client,
+            transport: transport,
             defaultHeaders: defaultHeaders,
-            retryPolicy: retryPolicy
+            retryPolicy: retryPolicy,
+            logger: Logger(label: LoggerLabel.identifier)
         )
     }
 
@@ -63,41 +52,41 @@ extension NetSkeinClient where Client == HTTPClient {
 }
 
 extension NetSkeinClient {
-    public func get(_ url: String) -> RequestBuilder<Client, BodyIsBlocked, EmptyBody> {
-        RequestBuilder(client: self, method: .GET, url: url, urlEncoder: urlEncoder)
+    public func get(_ url: String) -> NetSkeinRequest<Transport, BodyForbidden> {
+        NetSkeinRequest(client: self, method: .GET, url: url, percentEncoder: percentEncoder)
     }
 
-    public func post(_ url: String) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
-        RequestBuilder(client: self, method: .POST, url: url, urlEncoder: urlEncoder)
+    public func post(_ url: String) -> NetSkeinRequest<Transport, BodyAllowed> {
+        NetSkeinRequest(client: self, method: .POST, url: url, percentEncoder: percentEncoder)
     }
 
-    public func put(_ url: String) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
-        RequestBuilder(client: self, method: .PUT, url: url, urlEncoder: urlEncoder)
+    public func put(_ url: String) -> NetSkeinRequest<Transport, BodyAllowed> {
+        NetSkeinRequest(client: self, method: .PUT, url: url, percentEncoder: percentEncoder)
     }
 
-    public func patch(_ url: String) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
-        RequestBuilder(client: self, method: .PATCH, url: url, urlEncoder: urlEncoder)
+    public func patch(_ url: String) -> NetSkeinRequest<Transport, BodyAllowed> {
+        NetSkeinRequest(client: self, method: .PATCH, url: url, percentEncoder: percentEncoder)
     }
 
-    public func delete(_ url: String) -> RequestBuilder<Client, BodyIsBlocked, EmptyBody> {
-        RequestBuilder(client: self, method: .DELETE, url: url, urlEncoder: urlEncoder)
+    public func delete(_ url: String) -> NetSkeinRequest<Transport, BodyForbidden> {
+        NetSkeinRequest(client: self, method: .DELETE, url: url, percentEncoder: percentEncoder)
     }
 
     public func request(
         _ method: HTTPMethod,
         url: String
-    ) -> RequestBuilder<Client, BodyIsAllowed, EmptyBody> {
-        RequestBuilder<Client, BodyIsAllowed, EmptyBody>(
+    ) -> NetSkeinRequest<Transport, BodyAllowed> {
+        NetSkeinRequest<Transport, BodyAllowed>(
             client: self,
             method: method,
             url: url,
-            urlEncoder: urlEncoder
+            percentEncoder: percentEncoder
         )
     }
 
     public func shutdown() async throws(NetSkeinError) {
         do {
-            try await underlyingClient.shutdown()
+            try await transport.shutdown()
         } catch {
             logger.error(
                 "Failed to safely shutdown NetSkein underlying HTTP client: \(error.localizedDescription)"
@@ -119,11 +108,11 @@ public struct NetSkeinClientBuilder: Sendable {
     private var writeTimeout: TimeAmount
     private var defaultHeaders: HTTPHeaders
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider
-    private var proxy: NetSkeinProxy?
-    private var redirectPolicy: NetSkeinRedirectPolicy
+    private var proxy: Proxy?
+    private var redirectPolicy: RedirectPolicy
     private var automaticDecompression: Bool
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit
-    private var cookieJar: NetSkeinCookieJar?
+    private var cookieJar: CookieJar?
     private var retryPolicy: RetryPolicy
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool
@@ -140,7 +129,7 @@ public struct NetSkeinClientBuilder: Sendable {
         decompressionLimit = .size(10 * 1024 * 1024)
         retryPolicy = .disabled
         acceptInvalidCertificates = false
-        logger = Logger(label: Label.identifier)
+        logger = Logger(label: LoggerLabel.identifier)
     }
 }
 
@@ -183,14 +172,14 @@ extension NetSkeinClientBuilder {
     }
 
     @discardableResult
-    public func proxy(_ proxy: NetSkeinProxy) -> Self {
+    public func proxy(_ proxy: Proxy) -> Self {
         var copy = self
         copy.proxy = proxy
         return copy
     }
 
     @discardableResult
-    public func redirectPolicy(_ policy: NetSkeinRedirectPolicy) -> Self {
+    public func redirectPolicy(_ policy: RedirectPolicy) -> Self {
         var copy = self
         copy.redirectPolicy = policy
         return copy
@@ -213,7 +202,7 @@ extension NetSkeinClientBuilder {
     }
 
     @discardableResult
-    public func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
+    public func cookieJar(_ jar: CookieJar) -> Self {
         var copy = self
         copy.cookieJar = jar
         return copy
@@ -272,13 +261,13 @@ extension NetSkeinClientBuilder {
             config.decompression = .disabled
         }
 
-        let client = HTTPClient(
+        let transport = HTTPClient(
             eventLoopGroupProvider: eventLoopGroupProvider,
             configuration: config
         )
 
         return NetSkeinClient(
-            underlyingClient: client,
+            transport: transport,
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
             retryPolicy: retryPolicy,

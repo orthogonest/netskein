@@ -3,12 +3,12 @@ import Testing
 
 @testable import NetSkein
 
-struct NetSkeinCookieJarTests {
+struct CookieJarTests {
     @Test(
-        "NetSkeinCookieJarTests: Verifies setting and retrieving a single cookie for a specific host"
+        "CookieJarTests: Verifies setting and retrieving a single cookie for a specific host"
     )
     func testSetAndGetSingleCookie() {
-        let jar = NetSkeinCookieJar()
+        let jar = CookieJar()
         let host = "://github.com"
 
         jar.setCookie(host: host, name: "session_id", value: "xyz123")
@@ -18,10 +18,10 @@ struct NetSkeinCookieJarTests {
     }
 
     @Test(
-        "NetSkeinCookieJarTests: Verifies multiple cookies for the same host are correctly joined with semicolons"
+        "CookieJarTests: Verifies multiple cookies for the same host are correctly joined with semicolons"
     )
     func testMultipleCookiesForSameHost() {
-        let jar = NetSkeinCookieJar()
+        let jar = CookieJar()
         let host = "example.com"
 
         jar.setCookie(host: host, name: "theme", value: "dark")
@@ -40,9 +40,9 @@ struct NetSkeinCookieJarTests {
         #expect(components.contains("lang=en"))
     }
 
-    @Test("NetSkeinCookieJarTests: Ensures cookie domains are fully isolated from each other")
+    @Test("CookieJarTests: Ensures cookie domains are fully isolated from each other")
     func testHostIsolation() {
-        let jar = NetSkeinCookieJar()
+        let jar = CookieJar()
 
         jar.setCookie(host: "apple.com", name: "user", value: "steve")
         jar.setCookie(host: "google.com", name: "user", value: "larry")
@@ -53,10 +53,10 @@ struct NetSkeinCookieJarTests {
     }
 
     @Test(
-        "NetSkeinCookieJarTests: Verifies clear operation purges all stored cookie data across all hosts"
+        "CookieJarTests: Verifies clear operation purges all stored cookie data across all hosts"
     )
     func testClearCookies() {
-        let jar = NetSkeinCookieJar()
+        let jar = CookieJar()
 
         jar.setCookie(host: "example.com", name: "token", value: "123")
         #expect(jar.cookieHeader(for: "example.com") != nil)
@@ -67,10 +67,10 @@ struct NetSkeinCookieJarTests {
     }
 
     @Test(
-        "NetSkeinCookieJarTests: Verifies thread-safety under heavy concurrent write operations across parallel tasks"
+        "CookieJarTests: Verifies thread-safety under heavy concurrent write operations across parallel tasks"
     )
     func testConcurrentCookieWrites() async {
-        let jar = NetSkeinCookieJar()
+        let jar = CookieJar()
         let host = "concurrent.local"
         let iterationCount = 100
 

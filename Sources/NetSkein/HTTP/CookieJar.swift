@@ -1,7 +1,7 @@
 import NIOConcurrencyHelpers
 import NIOHTTP1
 
-public final class NetSkeinCookieJar: Sendable {
+public final class CookieJar: Sendable {
     private let storage: NIOLockedValueBox<[String: [String: String]]>
 
     public init() {
@@ -9,7 +9,7 @@ public final class NetSkeinCookieJar: Sendable {
     }
 }
 
-extension NetSkeinCookieJar {
+extension CookieJar {
     public func setCookie(host: String, name: String, value: String) {
         storage.withLockedValue { cookies in
             if cookies[host] == nil { cookies[host] = [:] }

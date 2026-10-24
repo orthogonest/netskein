@@ -4,15 +4,15 @@ import Testing
 
 @testable import NetSkein
 
-struct NetSkeinProxyTests {
+struct ProxyTests {
     @Test(
-        "NetSkeinProxyTests: Verifies HTTP proxy factory accurately maps host and port with safe default options"
+        "ProxyTests: Verifies HTTP proxy factory accurately maps host and port with safe default options"
     )
     func testHTTPProxyInitializationWithDefaults() {
         let expectedHost = "127.0.0.1"
         let expectedPort = 8080
 
-        let proxy = NetSkeinProxy.http(host: expectedHost, port: expectedPort)
+        let proxy = Proxy.http(host: expectedHost, port: expectedPort)
         let underlying = proxy.underlyingProxy
 
         #expect(underlying.host == expectedHost)
@@ -24,14 +24,14 @@ struct NetSkeinProxyTests {
     }
 
     @Test(
-        "NetSkeinProxyTests: Verifies HTTP proxy with authorization token injects credentials correctly"
+        "ProxyTests: Verifies HTTP proxy with authorization token injects credentials correctly"
     )
     func testHTTPProxyWithAuthorization() {
         let expectedHost = "secure-proxy.com"
         let expectedPort = 443
         let mockAuth = HTTPClient.Authorization.basic(username: "admin", password: "password123")
 
-        let proxy = NetSkeinProxy.http(
+        let proxy = Proxy.http(
             host: expectedHost,
             port: expectedPort,
             authorization: mockAuth
@@ -44,13 +44,13 @@ struct NetSkeinProxyTests {
     }
 
     @Test(
-        "NetSkeinProxyTests: Verifies HTTP proxy accurately propagates custom connect headers built via HTTPHeaders"
+        "ProxyTests: Verifies HTTP proxy accurately propagates custom connect headers built via HTTPHeaders"
     )
     func testHTTPProxyWithConnectHeaders() {
         var customHeaders = HTTPHeaders()
         customHeaders.add(name: "X-Proxy-Custom-Routing", value: "cluster-alpha")
 
-        let proxy = NetSkeinProxy.http(
+        let proxy = Proxy.http(
             host: "proxy.internal",
             port: 3128,
             connectHeaders: customHeaders
@@ -61,13 +61,13 @@ struct NetSkeinProxyTests {
     }
 
     @Test(
-        "NetSkeinProxyTests: Verifies SOCKS proxy factory accurately maps host and port to underlying socksServer configuration"
+        "ProxyTests: Verifies SOCKS proxy factory accurately maps host and port to underlying socksServer configuration"
     )
     func testSOCKSProxyInitialization() {
         let expectedHost = "proxy.local"
         let expectedPort = 1080
 
-        let proxy = NetSkeinProxy.socks(host: expectedHost, port: expectedPort)
+        let proxy = Proxy.socks(host: expectedHost, port: expectedPort)
         let underlying = proxy.underlyingProxy
 
         #expect(underlying.host == expectedHost)

@@ -2,10 +2,10 @@ import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
 
-public struct NetSkeinStub: Sendable {
+public struct HTTPStub: Sendable {
     public enum Outcome: Sendable {
-        case success(status: HTTPResponseStatus, headers: HTTPHeaders, body: ByteBuffer? = nil)
-        case failure(any Error & Sendable)
+        case response(status: HTTPResponseStatus, headers: HTTPHeaders, body: ByteBuffer? = nil)
+        case error(any Error & Sendable)
     }
 
     public typealias Validator = @Sendable (HTTPClientRequest) throws -> Void
@@ -45,15 +45,15 @@ public struct NetSkeinStub: Sendable {
     }
 }
 
-extension NetSkeinStub: Equatable {
-    public static func == (lhs: NetSkeinStub, rhs: NetSkeinStub) -> Bool {
+extension HTTPStub: Equatable {
+    public static func == (lhs: HTTPStub, rhs: HTTPStub) -> Bool {
         lhs.method == rhs.method
             && lhs.delay == rhs.delay
             && String(describing: lhs.outcome) == String(describing: rhs.outcome)
     }
 }
 
-extension NetSkeinStub: Hashable {
+extension HTTPStub: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(method.rawValue)
         hasher.combine(delay)

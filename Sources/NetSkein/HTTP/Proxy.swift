@@ -1,11 +1,11 @@
 import AsyncHTTPClient
 import NIOHTTP1
 
-public struct NetSkeinProxy: Sendable {
+public struct Proxy: Sendable {
     let underlyingProxy: HTTPClient.Configuration.Proxy
 }
 
-extension NetSkeinProxy {
+extension Proxy {
     public static func http(
         host: String,
         port: Int,

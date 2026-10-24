@@ -3,12 +3,12 @@ import Testing
 
 @testable import NetSkein
 
-struct NetSkeinRedirectPolicyTests {
+struct RedirectPolicyTests {
     @Test(
-        "NetSkeinRedirectPolicyTests: Verifies default case maps to correct follow max constraint"
+        "RedirectPolicyTests: Verifies default case maps to correct follow max constraint"
     )
     func testDefaultRedirectPolicy() {
-        let policy = NetSkeinRedirectPolicy.default
+        let policy = RedirectPolicy.default
         let expectedConfig = HTTPClient.Configuration.RedirectConfiguration.follow(
             max: 5,
             allowCycles: false
@@ -17,20 +17,20 @@ struct NetSkeinRedirectPolicyTests {
         assertEqual(policy.underlyingConfiguration, expectedConfig)
     }
 
-    @Test("NetSkeinRedirectPolicyTests: Verifies none case completely disallows redirect behaviors")
+    @Test("RedirectPolicyTests: Verifies none case completely disallows redirect behaviors")
     func testNoneRedirectPolicy() {
-        let policy = NetSkeinRedirectPolicy.none
+        let policy = RedirectPolicy.disabled
         let expectedConfig = HTTPClient.Configuration.RedirectConfiguration.disallow
 
         assertEqual(policy.underlyingConfiguration, expectedConfig)
     }
 
     @Test(
-        "NetSkeinRedirectPolicyTests: Verifies positive limited bounds assign explicit numeric caps"
+        "RedirectPolicyTests: Verifies positive limited bounds assign explicit numeric caps"
     )
     func testPositiveLimitedRedirectPolicy() {
         let customLimit = 3
-        let policy = NetSkeinRedirectPolicy.limited(customLimit)
+        let policy = RedirectPolicy.limited(maxRedirects: customLimit)
         let expectedConfig = HTTPClient.Configuration.RedirectConfiguration.follow(
             max: customLimit,
             allowCycles: false
@@ -40,22 +40,22 @@ struct NetSkeinRedirectPolicyTests {
     }
 
     @Test(
-        "NetSkeinRedirectPolicyTests: Verifies non-positive limited bounds fallback gracefully to disallow behavior"
+        "RedirectPolicyTests: Verifies non-positive limited bounds fallback gracefully to disallow behavior"
     )
     func testNegativeAndZeroLimitedRedirectPolicy() {
         // Test Zero limit constraint
-        let zeroPolicy = NetSkeinRedirectPolicy.limited(0)
+        let zeroPolicy = RedirectPolicy.limited(maxRedirects: 0)
         let expectedZeroConfig = HTTPClient.Configuration.RedirectConfiguration.disallow
         assertEqual(zeroPolicy.underlyingConfiguration, expectedZeroConfig)
 
         // Test Negative limit constraint
-        let negativePolicy = NetSkeinRedirectPolicy.limited(-5)
+        let negativePolicy = RedirectPolicy.limited(maxRedirects: -5)
         let expectedNegativeConfig = HTTPClient.Configuration.RedirectConfiguration.disallow
         assertEqual(negativePolicy.underlyingConfiguration, expectedNegativeConfig)
     }
 }
 
-extension NetSkeinRedirectPolicyTests {
+extension RedirectPolicyTests {
     private func assertEqual(
         _ lhs: HTTPClient.Configuration.RedirectConfiguration,
         _ rhs: HTTPClient.Configuration.RedirectConfiguration,

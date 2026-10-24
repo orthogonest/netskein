@@ -24,14 +24,15 @@ extension NetSkeinClientTests {
         "NetSkeinClientTests: Verifies designated initializer holds all properties and extensions correctly"
     )
     func testDesignatedInitializerLayout() async throws {
-        let mockClient = MockHTTPClient(stubs: [])
+        let mockTransport = MockHTTPClient(stubs: [])
         let customHeaders: HTTPHeaders = ["X-Global-Header": "Active"]
-        let jar = NetSkeinCookieJar()
+        let jar = CookieJar()
 
         let client = NetSkeinClient(
-            underlyingClient: mockClient,
+            transport: mockTransport,
             defaultHeaders: customHeaders,
-            cookieJar: jar
+            cookieJar: jar,
+            logger: Logger(label: LoggerLabel.test)
         )
 
         #expect(client.defaultHeaders.first(name: "X-Global-Header") == "Active")
@@ -66,51 +67,52 @@ extension NetSkeinClientTests {
 
 extension NetSkeinClientTests {
     @Test(
-        "NetSkeinClientTests: Verifies method factories cleanly map types to generic RequestBuilders with exact tag rules"
+        "NetSkeinClientTests: Verifies method factories cleanly map types to generic NetSkeinRequest with exact tag rules"
     )
     func testHTTPMethodFactoryBuilders() async throws {
         let mockEngine = MockHTTPClient(stubs: [])
-        let client = NetSkeinClient(underlyingClient: mockEngine)
+        let client = NetSkeinClient(transport: mockEngine, logger: Logger(label: LoggerLabel.test))
         let targetURL = "https://netskein.mock"
 
-        // Validate GET: Must be BodyIsBlocked and EmptyBody tags configuration
+        // Validate GET: Must be BodyForbidden tags configuration
         let getBuilder = client.get(targetURL)
         let getMirror = Mirror(reflecting: getBuilder)
         #expect(getMirror.descendant("method") as? HTTPMethod == .GET)
         #expect(
-            type(of: getBuilder) == RequestBuilder<MockHTTPClient, BodyIsBlocked, EmptyBody>.self
+            type(of: getBuilder) == NetSkeinRequest<MockHTTPClient, BodyForbidden>.self
         )
 
-        // Validate POST: Must be BodyIsAllowed and EmptyBody tags configuration
+        // Validate POST: Must be BodyAllowed tags configuration
         let postBuilder = client.post(targetURL)
         let postMirror = Mirror(reflecting: postBuilder)
         #expect(postMirror.descendant("method") as? HTTPMethod == .POST)
         #expect(
-            type(of: postBuilder) == RequestBuilder<MockHTTPClient, BodyIsAllowed, EmptyBody>.self
+            type(of: postBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
         )
 
-        // Validate PUT
+        // Validate PU: Must be BodyAllowed tags configurationT
         let putBuilder = client.put(targetURL)
         let putMirror = Mirror(reflecting: putBuilder)
         #expect(putMirror.descendant("method") as? HTTPMethod == .PUT)
         #expect(
-            type(of: putBuilder) == RequestBuilder<MockHTTPClient, BodyIsAllowed, EmptyBody>.self
+            type(of: putBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
         )
 
-        // Validate PATCH
+        // Validate PATC: Must be BodyAllowed tags configurationH
         let patchBuilder = client.patch(targetURL)
         let patchMirror = Mirror(reflecting: patchBuilder)
         #expect(patchMirror.descendant("method") as? HTTPMethod == .PATCH)
         #expect(
-            type(of: patchBuilder) == RequestBuilder<MockHTTPClient, BodyIsAllowed, EmptyBody>.self
+            type(of: patchBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
         )
 
-        // Validate DELETE: Must be BodyIsBlocked and EmptyBody tags configuration
+        // Validate DELETE: Must be BodyForbidden tags configuration
         let deleteBuilder = client.delete(targetURL)
         let deleteMirror = Mirror(reflecting: deleteBuilder)
         #expect(deleteMirror.descendant("method") as? HTTPMethod == .DELETE)
         #expect(
-            type(of: deleteBuilder) == RequestBuilder<MockHTTPClient, BodyIsBlocked, EmptyBody>.self
+            type(of: deleteBuilder)
+                == NetSkeinRequest<MockHTTPClient, BodyForbidden>.self
         )
 
         // Validate Custom Request Mapping (e.g. OPTIONS)
@@ -118,7 +120,7 @@ extension NetSkeinClientTests {
         let customMirror = Mirror(reflecting: customBuilder)
         #expect(customMirror.descendant("method") as? HTTPMethod == .OPTIONS)
         #expect(
-            type(of: customBuilder) == RequestBuilder<MockHTTPClient, BodyIsAllowed, EmptyBody>.self
+            type(of: customBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
         )
 
         try await client.shutdown()
@@ -140,7 +142,7 @@ extension NetSkeinClientTests {
             }
         )
 
-        let client = NetSkeinClient(underlyingClient: faultyMock)
+        let client = NetSkeinClient(transport: faultyMock, logger: Logger(label: LoggerLabel.test))
 
         // Execute shutdown and verify that the thrown error is safely captured and transformed
         await #expect(throws: NetSkeinError.self) {
@@ -189,10 +191,10 @@ extension NetSkeinClientBuilderTests {
     func testFluentChainingMutations() {
         let headers: HTTPHeaders = ["X-Builder-Assert": "True"]
         let customLogger = Logger(label: "test.logger")
-        let customJar = NetSkeinCookieJar()
+        let customJar = CookieJar()
         let retryPolicy = RetryPolicy.standard()
         let customTls = TLSConfiguration.makeClientConfiguration()
-        let customProxy = NetSkeinProxy.http(host: "127.0.0.1", port: 3128)
+        let customProxy = Proxy.http(host: "127.0.0.1", port: 3128)
 
         let builder = NetSkeinClientBuilder()
             .connectTimeout(.seconds(5))
@@ -201,10 +203,10 @@ extension NetSkeinClientBuilderTests {
             .defaultHeaders(headers)
             .eventLoopGroupProvider(.shared(HTTPClient.defaultEventLoopGroup))
             .proxy(customProxy)
-            .redirectPolicy(.none)
+            .redirectPolicy(.disabled)
             .automaticDecompression(false)
             .decompressionLimit(.size(1024))
-            .cookieStore(customJar)
+            .cookieJar(customJar)
             .retryPolicy(retryPolicy)
             .tlsConfiguration(customTls)
             .acceptInvalidCertificates(true)
@@ -217,7 +219,7 @@ extension NetSkeinClientBuilderTests {
         #expect(mirror.descendant("writeTimeout") as? TimeAmount == .seconds(20))
         #expect(mirror.descendant("automaticDecompression") as? Bool == false)
         #expect(mirror.descendant("acceptInvalidCertificates") as? Bool == true)
-        #expect(mirror.descendant("cookieJar") as? NetSkeinCookieJar === customJar)
+        #expect(mirror.descendant("cookieJar") as? CookieJar === customJar)
     }
 }
 
@@ -258,7 +260,7 @@ extension NetSkeinClientBuilderTests {
         "NetSkeinClientBuilderTests: Verifies proxy configurations pass down properties correctly"
     )
     func testProxyBuildBranch() async throws {
-        let customProxy = NetSkeinProxy.http(host: "127.0.0.1", port: 3128)
+        let customProxy = Proxy.http(host: "127.0.0.1", port: 3128)
         let client = NetSkeinClientBuilder()
             .proxy(customProxy)
             .build()

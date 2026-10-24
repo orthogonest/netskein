@@ -1,6 +1,6 @@
 import Foundation
 
-public struct NetSkeinPathSegment: ExpressibleByStringInterpolation, Sendable {
+public struct PathSegment: ExpressibleByStringInterpolation, Sendable {
     public let value: String
 
     public init(stringLiteral value: String) {
@@ -23,7 +23,7 @@ public struct NetSkeinPathSegment: ExpressibleByStringInterpolation, Sendable {
         }
 
         public mutating func appendInterpolation(_ param: String) {
-            let encoded = NetSkeinURLEncoder.default.encodePath(param)
+            let encoded = PercentEncoder.default.encodePath(param)
             output.append(encoded)
         }
 

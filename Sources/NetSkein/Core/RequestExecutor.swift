@@ -9,8 +9,8 @@ import NIOHTTP1
     import Foundation
 #endif
 
-struct RequestExecutor<Client: HTTPClientProtocol>: Sendable {
-    let client: NetSkeinClient<Client>
+struct RequestExecutor<Transport: HTTPTransport>: Sendable {
+    let client: NetSkeinClient<Transport>
     let method: HTTPMethod
     let url: String
     let headers: HTTPHeaders
@@ -110,7 +110,7 @@ extension RequestExecutor {
     ) {
         let endTime = DispatchTime.now()
         let duration =
-            Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / NanoSeconds.toSeconds
+            Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / Nanoseconds.toSeconds
         let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
 
         logger.info(
@@ -345,7 +345,7 @@ extension RequestExecutor {
             var rawResponse: HTTPClientResponse?
 
             do {
-                let response = try await client.underlyingClient.execute(
+                let response = try await client.transport.execute(
                     request,
                     timeout: timeout ?? .seconds(30),
                     logger: logger
@@ -395,7 +395,7 @@ extension RequestExecutor {
 
 extension RequestExecutor {
     func execute(
-        _ onChunk: ChunkHandler
+        stream onChunk: ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
         var attempt = 0
         var outcome: Result<(status: HTTPResponseStatus, headers: HTTPHeaders), NetSkeinError>
@@ -415,7 +415,7 @@ extension RequestExecutor {
             var rawResponse: HTTPClientResponse?
 
             do {
-                let response = try await client.underlyingClient.execute(
+                let response = try await client.transport.execute(
                     request,
                     timeout: timeout ?? .seconds(30),
                     logger: logger
@@ -533,7 +533,7 @@ extension RequestExecutor {
             var rawResponse: HTTPClientResponse?
 
             do {
-                let response = try await client.underlyingClient.execute(
+                let response = try await client.transport.execute(
                     request,
                     timeout: timeout ?? .seconds(30),
                     logger: logger

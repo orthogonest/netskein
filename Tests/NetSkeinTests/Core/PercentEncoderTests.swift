@@ -1,48 +1,47 @@
-import Foundation
 import Testing
 
 @testable import NetSkein
 
-struct NetSkeinURLEncoderTests {
+struct PercentEncoderTests {
     @Test(
-        "NetSkeinURLEncoderTests: Verifies the shared default instance and basic path/form encoding"
+        "PercentEncoderTests: Verifies the shared default instance and basic path/form encoding"
     )
     func testBasicAndDefault() {
-        let encoder = NetSkeinURLEncoder.default
+        let encoder = PercentEncoder.default
         #expect(encoder.encodePath("hello world") == "hello%20world")
         #expect(encoder.encodeForm(["key": "value"]) == "key=value")
     }
 
     @Test(
-        "NetSkeinURLEncoderTests: Verifies path and form encoding behaviors, sorting, and fallbacks"
+        "PercentEncoderTests: Verifies path and form encoding behaviors, sorting, and fallbacks"
     )
     func testEncodingAndFallback() {
-        let encoder = NetSkeinURLEncoder()
+        let encoder = PercentEncoder()
         #expect(encoder.encodePath("cross+path") == "cross%2Bpath")
         #expect(
             encoder.encodeForm(["b_key": "value_b", "a_key": "value_a"])
                 == "a_key=value_a&b_key=value_b"
         )
 
-        var fallbackEncoder = NetSkeinURLEncoder()
+        var fallbackEncoder = PercentEncoder()
         fallbackEncoder._percentEncode = { _, _ in nil }
         #expect(fallbackEncoder.encodePath("fallback segment") == "fallback segment")
         #expect(fallbackEncoder.encodeForm(["test Key": "test Value"]) == "test Key=test Value")
     }
 
     @Test(
-        "NetSkeinURLEncoderTests: Verifies standard fields are correctly encoded and sorted alphabetically"
+        "PercentEncoderTests: Verifies standard fields are correctly encoded and sorted alphabetically"
     )
     func testStandardEncodingAndSorting() {
         let fields = ["b_key": "value_b", "a_key": "value_a"]
-        let result = NetSkeinURLEncoder().encodeForm(fields)
+        let result = PercentEncoder().encodeForm(fields)
 
         // Assert that sorting maintains deterministic predictable string matches
         #expect(result == "a_key=value_a&b_key=value_b")
     }
 
     @Test(
-        "NetSkeinURLEncoderTests: Assures complex special characters matrices are successfully escaped according to W3C rules"
+        "PercentEncoderTests: Assures complex special characters matrices are successfully escaped according to W3C rules"
     )
     func testExtremeCharactersPercentEncoding() {
         let complexFields = [
@@ -52,7 +51,7 @@ struct NetSkeinURLEncoderTests {
             "symbols": "id?/$#",
         ]
 
-        let result = NetSkeinURLEncoder().encodeForm(complexFields)
+        let result = PercentEncoder().encodeForm(complexFields)
 
         // Assert specific token matches within the final output string layout
         #expect(result.contains("email=dev%2Btest%40netskein.io"))
@@ -63,10 +62,10 @@ struct NetSkeinURLEncoderTests {
     }
 
     @Test(
-        "NetSkeinURLEncoderTests: Assures fallback execution when encountering malformed string characters"
+        "PercentEncoderTests: Assures fallback execution when encountering malformed string characters"
     )
     func testMalformedCharactersFallback() {
-        var encoder = NetSkeinURLEncoder()
+        var encoder = PercentEncoder()
         encoder._percentEncode = { _, _ in nil }
 
         let result = encoder.encodeForm(["testKey": "test Value"])

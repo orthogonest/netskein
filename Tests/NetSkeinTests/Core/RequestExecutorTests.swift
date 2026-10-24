@@ -21,10 +21,10 @@ extension RequestExecutorTests {
     @Test("RequestExecutorTests: Verifies buffered execution returns success response on 200 OK")
     func testBufferedExecutionSuccess() async throws {
         let expectedBuffer = ByteBuffer(string: "{\"status\":\"ok\"}")
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/data",
-            outcome: .success(
+            outcome: .response(
                 status: .ok,
                 headers: ["Content-Type": "application/json"],
                 body: expectedBuffer
@@ -44,7 +44,7 @@ extension RequestExecutorTests {
         "RequestExecutorTests: Verifies cookie jar injects Cookie header and ingests valid Set-Cookie headers"
     )
     func testBufferedExecutionCookieHandling() async throws {
-        let cookieJar = NetSkeinCookieJar()
+        let cookieJar = CookieJar()
         cookieJar.setCookie(host: "api.example.com", name: "session_id", value: "token_123")
 
         let isCookieSent = NIOLockedValueBox(false)
@@ -53,7 +53,7 @@ extension RequestExecutorTests {
         responseHeaders.add(name: "Set-Cookie", value: "user=octocat; Path=/; Secure")
         responseHeaders.add(name: "Set-Cookie", value: "malformed_cookie_no_equal_sign")
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/profile",
             requestValidator: { request in
@@ -62,11 +62,11 @@ extension RequestExecutorTests {
                     isCookieSent.withLockedValue { $0 = true }
                 }
             },
-            outcome: .success(status: .ok, headers: responseHeaders, body: nil)
+            outcome: .response(status: .ok, headers: responseHeaders, body: nil)
         )
 
         let client = NetSkeinClient.testing()
-            .cookieStore(cookieJar)
+            .cookieJar(cookieJar)
             .addStub(stub)
             .build()
 
@@ -81,15 +81,15 @@ extension RequestExecutorTests {
         "RequestExecutorTests: Verifies retry loop recovers when transient 503 succeeds on next attempt"
     )
     func testBufferedExecutionRecoversViaRetry() async throws {
-        let stubFail = NetSkeinStub(
+        let stubFail = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/retry-recover") },
-            outcome: .success(status: .serviceUnavailable, headers: [:], body: nil)
+            outcome: .response(status: .serviceUnavailable, headers: [:], body: nil)
         )
-        let stubSuccess = NetSkeinStub(
+        let stubSuccess = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/retry-recover") },
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "Recovered!"))
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "Recovered!"))
         )
 
         let client = NetSkeinClient.testing()
@@ -109,10 +109,10 @@ extension RequestExecutorTests {
 
     @Test("RequestExecutorTests: Verifies retry loop exhausts retries and throws network failure")
     func testBufferedExecutionExhaustsRetries() async {
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/fail",
-            outcome: .failure(MockStubOutageError())
+            outcome: .error(MockStubOutageError())
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
 
@@ -131,11 +131,11 @@ extension RequestExecutorTests {
         "RequestExecutorTests: Verifies checkCancellation throws networkFailure when task is cancelled"
     )
     func testBufferedExecutionTaskCancellation() async throws {
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/slow",
             delay: .milliseconds(500),
-            outcome: .success(status: .ok, headers: [:], body: nil)
+            outcome: .response(status: .ok, headers: [:], body: nil)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/slow")
@@ -162,15 +162,15 @@ extension RequestExecutorTests {
         var headers = HTTPHeaders()
         headers.add(name: "Retry-After", value: "1")  // 1 second > 0 nanoseconds
 
-        let stubFail = NetSkeinStub(
+        let stubFail = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/retry-after-override") },
-            outcome: .success(status: .tooManyRequests, headers: headers, body: nil)
+            outcome: .response(status: .tooManyRequests, headers: headers, body: nil)
         )
-        let stubSuccess = NetSkeinStub(
+        let stubSuccess = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/retry-after-override") },
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "OK"))
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "OK"))
         )
 
         let client = NetSkeinClient.testing().addStubs([stubFail, stubSuccess]).build()
@@ -191,10 +191,10 @@ extension RequestExecutorTests {
 
     @Test("RequestExecutorTests: Verifies sleepBetweenRetries throws when cancelled during sleep")
     func testSleepBetweenRetriesCancellation() async throws {
-        let stubFail = NetSkeinStub(
+        let stubFail = HTTPStub(
             method: .GET,
             url: "https://api.example.com/sleep-cancel",
-            outcome: .success(status: .serviceUnavailable, headers: [:], body: nil)
+            outcome: .response(status: .serviceUnavailable, headers: [:], body: nil)
         )
         let client = NetSkeinClient.testing().addStub(stubFail).build()
 
@@ -232,10 +232,10 @@ extension RequestExecutorTests {
         "RequestExecutorTests: Verifies buffered execution throws captured error when maxRetries is exhausted"
     )
     func testBufferedExecutionExhaustsAndThrows() async {
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/exhaust-test") },
-            outcome: .failure(MockStubOutageError())
+            outcome: .error(MockStubOutageError())
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -261,10 +261,10 @@ extension RequestExecutorTests {
     )
     func testStreamingExecutionSuccess() async throws {
         let payload = ByteBuffer(string: "chunk1_chunk2")
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/stream",
-            outcome: .success(status: .ok, headers: ["Content-Length": "13"], body: payload)
+            outcome: .response(status: .ok, headers: ["Content-Length": "13"], body: payload)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/stream")
@@ -281,10 +281,10 @@ extension RequestExecutorTests {
 
     @Test("RequestExecutorTests: Verifies streaming execution throws badStatus on non-2xx status")
     func testStreamingExecutionNon2xxThrows() async {
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/stream-error",
-            outcome: .success(status: .notFound, headers: [:], body: nil)
+            outcome: .response(status: .notFound, headers: [:], body: nil)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -304,10 +304,10 @@ extension RequestExecutorTests {
     func testStreamingExecutionCallbackError() async {
         struct MockConsumerError: Error {}
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/stream-callback-error",
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "data"))
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "data"))
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -328,15 +328,15 @@ extension RequestExecutorTests {
 
     @Test("RequestExecutorTests: Verifies streaming execution retries on failure and succeeds")
     func testStreamingExecutionRecoversViaRetry() async throws {
-        let stubFail = NetSkeinStub(
+        let stubFail = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/stream-retry") },
-            outcome: .success(status: .serviceUnavailable, headers: [:], body: nil)
+            outcome: .response(status: .serviceUnavailable, headers: [:], body: nil)
         )
-        let stubSuccess = NetSkeinStub(
+        let stubSuccess = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/stream-retry") },
-            outcome: .success(
+            outcome: .response(
                 status: .ok,
                 headers: ["Content-Length": "4"],
                 body: ByteBuffer(string: "DATA")
@@ -367,10 +367,10 @@ extension RequestExecutorTests {
         defer { try? FileManager.default.removeItem(at: destURL) }
 
         let downloadData = ByteBuffer(string: "Downloaded content for testing.")
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/download-fresh",
-            outcome: .success(status: .ok, headers: ["Content-Length": "31"], body: downloadData)
+            outcome: .response(status: .ok, headers: ["Content-Length": "31"], body: downloadData)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/download-fresh")
@@ -412,7 +412,7 @@ extension RequestExecutorTests {
         responseHeaders.add(name: "Content-Range", value: "bytes 10-14/15")
         responseHeaders.add(name: "ETag", value: "\"valid-etag\"")
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/file.bin",
             requestValidator: { request in
@@ -420,7 +420,7 @@ extension RequestExecutorTests {
                 #expect(request.headers.first(name: "If-Range") == "\"initial-etag\"")
                 isRangeValidated.withLockedValue { $0 = true }
             },
-            outcome: .success(status: .partialContent, headers: responseHeaders, body: appendChunk)
+            outcome: .response(status: .partialContent, headers: responseHeaders, body: appendChunk)
         )
 
         let client = NetSkeinClient.testing().addStub(stub).build()
@@ -449,10 +449,10 @@ extension RequestExecutorTests {
         try Data("OLD_DATA_TO_OVERWRITE".utf8).write(to: destURL)
 
         let replacementChunk = ByteBuffer(string: "NEW_FULL_FILE")
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/file.bin",
-            outcome: .success(
+            outcome: .response(
                 status: .ok,
                 headers: ["Content-Length": "13"],
                 body: replacementChunk
@@ -481,10 +481,10 @@ extension RequestExecutorTests {
 
         try Data("SOME_INITIAL_DATA".utf8).write(to: destURL)
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/range-fail",
-            outcome: .success(status: .rangeNotSatisfiable, headers: [:], body: nil)
+            outcome: .response(status: .rangeNotSatisfiable, headers: [:], body: nil)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -511,10 +511,10 @@ extension RequestExecutorTests {
     )
     func testDownloadExecutionInvalidPathThrowsIOFailure() async {
         let impossiblePath = "/invalid_root_directory_netskein_test/output.bin"
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/download-io-fail",
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "data"))
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "data"))
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -536,15 +536,15 @@ extension RequestExecutorTests {
         var failHeaders = HTTPHeaders()
         failHeaders.add(name: "Retry-After", value: "0")  // 0 seconds delta-seconds
 
-        let stubFail = NetSkeinStub(
+        let stubFail = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/retry-after") },
-            outcome: .success(status: .tooManyRequests, headers: failHeaders, body: nil)
+            outcome: .response(status: .tooManyRequests, headers: failHeaders, body: nil)
         )
-        let stubSuccess = NetSkeinStub(
+        let stubSuccess = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/retry-after") },
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "OK"))
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "OK"))
         )
 
         let client = NetSkeinClient.testing()
@@ -594,10 +594,10 @@ extension RequestExecutorTests {
 
         var headers = HTTPHeaders()
         headers.add(name: "Content-Range", value: "bytes 10-14/15")
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/file.bin",
-            outcome: .success(
+            outcome: .response(
                 status: .partialContent,
                 headers: headers,
                 body: ByteBuffer(string: "ABC")
@@ -631,10 +631,10 @@ extension RequestExecutorTests {
         // Create file BEFORE calling execute
         try Data("OLD_FILE_BEFORE_RUN".utf8).write(to: destURL)
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/fresh-replace",
-            outcome: .success(
+            outcome: .response(
                 status: .ok,
                 headers: ["Content-Length": "3"],
                 body: ByteBuffer(string: "NEW")
@@ -658,10 +658,10 @@ extension RequestExecutorTests {
         var headers = HTTPHeaders()
         headers.add(name: "Last-Modified", value: "Wed, 21 Oct 2026 07:28:00 GMT")
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/file-with-date",
-            outcome: .success(status: .ok, headers: headers, body: ByteBuffer(string: "payload"))
+            outcome: .response(status: .ok, headers: headers, body: ByteBuffer(string: "payload"))
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/file-with-date")
@@ -676,10 +676,10 @@ extension RequestExecutorTests {
         let destURL = tempDir.appendingPathComponent("test_500_\(UUID().uuidString).bin")
         defer { try? FileManager.default.removeItem(at: destURL) }
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/download-500",
-            outcome: .success(status: .internalServerError, headers: [:], body: nil)
+            outcome: .response(status: .internalServerError, headers: [:], body: nil)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -699,15 +699,15 @@ extension RequestExecutorTests {
         let destURL = tempDir.appendingPathComponent("test_download_retry_\(UUID().uuidString).bin")
         defer { try? FileManager.default.removeItem(at: destURL) }
 
-        let stubFail = NetSkeinStub(
+        let stubFail = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/download-retry") },
-            outcome: .success(status: .gatewayTimeout, headers: [:], body: nil)
+            outcome: .response(status: .gatewayTimeout, headers: [:], body: nil)
         )
-        let stubSuccess = NetSkeinStub(
+        let stubSuccess = HTTPStub(
             method: .GET,
             urlMatcher: { $0.contains("/download-retry") },
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "SAVED"))
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "SAVED"))
         )
 
         let client = NetSkeinClient.testing().addStubs([stubFail, stubSuccess]).build()
@@ -730,14 +730,18 @@ extension RequestExecutorTests {
 
         let taskBox = NIOLockedValueBox<Task<Void, any Error>?>(nil)
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/cancel-download",
             requestValidator: { _ in
                 // Cancel the task right after request validation, before body streaming begins
                 taskBox.withLockedValue { $0?.cancel() }
             },
-            outcome: .success(status: .ok, headers: [:], body: ByteBuffer(string: "stream_payload"))
+            outcome: .response(
+                status: .ok,
+                headers: [:],
+                body: ByteBuffer(string: "stream_payload")
+            )
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -771,10 +775,10 @@ extension RequestExecutorTests {
 
         try Data("0123456789".utf8).write(to: destURL)
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/file.bin",
-            outcome: .success(
+            outcome: .response(
                 status: .partialContent,
                 headers: ["Content-Length": "5"],
                 body: ByteBuffer(string: "ABCDE")
@@ -803,10 +807,10 @@ extension RequestExecutorTests {
         let destURL = tempDir.appendingPathComponent("test_empty_\(UUID().uuidString).bin")
         defer { try? FileManager.default.removeItem(at: destURL) }
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/empty-file",
-            outcome: .success(status: .ok, headers: [:], body: nil)
+            outcome: .response(status: .ok, headers: [:], body: nil)
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/empty-file")
@@ -825,13 +829,16 @@ extension RequestExecutorTests {
         let destURL = tempDir.appendingPathComponent("test_stream_drop_\(UUID().uuidString).bin")
         defer { try? FileManager.default.removeItem(at: destURL) }
 
-        let underlyingClient = StreamingHTTPClient(
+        let transport = StreamingHTTPClient(
             status: .ok,
             headers: [:],
             chunks: [ByteBuffer(string: "partial")],
             failure: MockStubOutageError()
         )
-        let client = NetSkeinClient(underlyingClient: underlyingClient)
+        let client = NetSkeinClient(
+            transport: transport,
+            logger: Logger(label: LoggerLabel.test)
+        )
         let executor = makeExecutor(
             client: client,
             url: "https://api.example.com/stream-drop",
@@ -858,10 +865,14 @@ extension RequestExecutorTests {
             unlink(fifo.path)
         }
 
-        let stub = NetSkeinStub(
+        let stub = HTTPStub(
             method: .GET,
             url: "https://api.example.com/file.bin",
-            outcome: .success(status: .partialContent, headers: [:], body: ByteBuffer(string: "AB"))
+            outcome: .response(
+                status: .partialContent,
+                headers: [:],
+                body: ByteBuffer(string: "AB")
+            )
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(
@@ -887,12 +898,15 @@ extension RequestExecutorTests {
         let destURL = tempDir.appendingPathComponent("test_write_fail_\(UUID().uuidString).bin")
         defer { try? FileManager.default.removeItem(at: destURL) }
 
-        let underlyingClient = StreamingHTTPClient(
+        let transport = StreamingHTTPClient(
             status: .ok,
             headers: [:],
             chunks: [ByteBuffer(string: "first"), ByteBuffer(string: "second")]
         )
-        let client = NetSkeinClient(underlyingClient: underlyingClient)
+        let client = NetSkeinClient(
+            transport: transport,
+            logger: Logger(label: LoggerLabel.test)
+        )
         let executor = makeExecutor(
             client: client,
             url: "https://api.example.com/write-fail",
@@ -918,8 +932,8 @@ extension RequestExecutorTests {
 // MARK: - Test Factory Helpers
 
 extension RequestExecutorTests {
-    private func makeExecutor<Client: HTTPClientProtocol>(
-        client: NetSkeinClient<Client>,
+    private func makeExecutor<Transport: HTTPTransport>(
+        client: NetSkeinClient<Transport>,
         method: HTTPMethod = .GET,
         url: String,
         headers: HTTPHeaders = [:],
@@ -927,7 +941,7 @@ extension RequestExecutorTests {
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024
-    ) -> RequestExecutor<Client> {
+    ) -> RequestExecutor<Transport> {
         RequestExecutor(
             client: client,
             method: method,
@@ -973,7 +987,7 @@ extension RequestExecutorTests {
 // MARK: - Streaming Mock Client
 
 /// Serves a fixed response whose body is streamed chunk by chunk, optionally failing after the last chunk.
-private struct StreamingHTTPClient: HTTPClientProtocol {
+private struct StreamingHTTPClient: HTTPTransport {
     let status: HTTPResponseStatus
     let headers: HTTPHeaders
     let chunks: [ByteBuffer]

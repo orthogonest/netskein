@@ -2,11 +2,11 @@ import Testing
 
 @testable import NetSkein
 
-struct NanoSecondsTests {
+struct NanosecondsTests {
     @Test(
-        "NanoSecondsTests: Verifies nanoseconds to seconds conversion constant matches the absolute mathematical scale"
+        "NanosecondsTests: Verifies nanoseconds to seconds conversion constant matches the absolute mathematical scale"
     )
-    func testNanoSecondsToSecondsConstantValue() {
-        #expect(NanoSeconds.toSeconds == 1_000_000_000.0)
+    func testNanosecondsToSecondsConstantValue() {
+        #expect(Nanoseconds.toSeconds == 1_000_000_000.0)
     }
 }
