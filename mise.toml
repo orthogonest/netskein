@@ -1,8 +1,8 @@
 [tools]
-"pipx:pre-commit" = "4.7.0"
+uv = "latest"
 
 [tasks]
 setup = """
-pre-commit install
+uvx pre-commit install
 echo "✅ Local ecosystem initialized and Git hooks activated successfully!"
 """
