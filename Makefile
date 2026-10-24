@@ -56,6 +56,10 @@ test:
 
 _testing:
 	@echo "$(CYAN)>>> Running All Tests...$(RESET)"
+	@swift test
+
+_testing-cov:
+	@echo "$(CYAN)>>> Running All Tests with Code Coverage...$(RESET)"
 	@swift test --enable-code-coverage
 
 # --- Coverage ---
@@ -68,7 +72,7 @@ COV_OUT_DIR  := .build/coverage-report
 coverage: 
 	@clear
 	@$(MAKE) _prepare-cov
-	@$(MAKE) _testing
+	@$(MAKE) _testing-cov
 	@echo "$(CYAN)>>> Generating Coverage Report...$(RESET)"
 	@xcrun llvm-cov show \
 	  $(COV_BINARY) \
@@ -79,6 +83,7 @@ coverage:
 
 ## Generate terminal-based summary code coverage report
 cov:
+	@$(MAKE) _testing-cov
 	@./Scripts/check-coverage.sh
 
 _prepare-cov:

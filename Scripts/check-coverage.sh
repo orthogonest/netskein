@@ -56,6 +56,12 @@ TOTAL_PCT=$(echo "$TOTAL_LINE" | awk '{
   }
 }' | sed 's/%//')
 
+# Fail fast when the profile data does not match the test binary (e.g. tests rebuilt without coverage)
+if [ -z "$TOTAL_PCT" ]; then
+  echo -e "${BOLD}${RED}FAILURE:${RESET} No coverage data found. Run 'swift test --enable-code-coverage' first."
+  exit 1
+fi
+
 # Convert to an integer for basic numeric comparison
 TOTAL_INT=$(printf "%.0f" "$TOTAL_PCT")
 
