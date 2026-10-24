@@ -328,8 +328,10 @@ extension RequestExecutor {
 extension RequestExecutor {
     func execute() async throws(NetSkeinError) -> NetSkeinResponse {
         var attempt = 0
+        var outcome: Result<NetSkeinResponse, NetSkeinError>
+        var shouldRetry: Bool
 
-        while true {
+        repeat {
             try checkCancellation()
 
             let (request, requestID) = try prepareRequest(attempt: attempt)
@@ -356,18 +358,15 @@ extension RequestExecutor {
                     maxBytes: maxResponseBytes
                 )
 
-                if try await evaluateRetry(
+                outcome = .success(netSkeinResponse)
+                shouldRetry = try await evaluateRetry(
                     policy: activeRetryPolicy,
                     attempt: &attempt,
                     status: netSkeinResponse.status,
                     headers: netSkeinResponse.headers,
                     error: nil,
                     logger: logger
-                ) {
-                    continue
-                }
-
-                return netSkeinResponse
+                )
             } catch {
                 let mappedError = mapError(
                     error,
@@ -376,20 +375,19 @@ extension RequestExecutor {
                     logger: logger
                 )
 
-                if try await evaluateRetry(
+                outcome = .failure(mappedError)
+                shouldRetry = try await evaluateRetry(
                     policy: activeRetryPolicy,
                     attempt: &attempt,
                     status: rawResponse?.status,
                     headers: rawResponse?.headers,
                     error: mappedError,
                     logger: logger
-                ) {
-                    continue
-                }
-
-                throw mappedError
+                )
             }
-        }
+        } while shouldRetry
+
+        return try outcome.get()
     }
 }
 
@@ -400,8 +398,10 @@ extension RequestExecutor {
         _ onChunk: ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
         var attempt = 0
+        var outcome: Result<(status: HTTPResponseStatus, headers: HTTPHeaders), NetSkeinError>
+        var shouldRetry: Bool
 
-        while true {
+        repeat {
             try checkCancellation()
 
             let (request, requestID) = try prepareRequest(attempt: attempt)
@@ -450,7 +450,8 @@ extension RequestExecutor {
                     "Finished streaming response body. Total bytes received: \(receivedBytes)"
                 )
 
-                return (response.status, response.headers)
+                outcome = .success((response.status, response.headers))
+                shouldRetry = false
             } catch {
                 let mappedError = mapError(
                     error,
@@ -459,20 +460,19 @@ extension RequestExecutor {
                     logger: logger
                 )
 
-                if try await evaluateRetry(
+                outcome = .failure(mappedError)
+                shouldRetry = try await evaluateRetry(
                     policy: activeRetryPolicy,
                     attempt: &attempt,
                     status: rawResponse?.status,
                     headers: rawResponse?.headers,
                     error: mappedError,
                     logger: logger
-                ) {
-                    continue
-                }
-
-                throw mappedError
+                )
             }
-        }
+        } while shouldRetry
+
+        return try outcome.get()
     }
 }
 
@@ -486,6 +486,8 @@ extension RequestExecutor {
     ) async throws(NetSkeinError) {
         var attempt = 0
         var activeValidator = resumption.validator
+        var outcome: Result<Void, NetSkeinError>
+        var shouldRetry: Bool
 
         if resumption == .disabled || resumption == .onRetry {
             if FileManager.default.fileExists(atPath: path) {
@@ -493,14 +495,16 @@ extension RequestExecutor {
             }
         }
 
-        while true {
+        repeat {
             try checkCancellation()
 
             // Inspect existing file size if resumption is permitted
             let existingBytes: Int64
-            if resumption != .disabled && FileManager.default.fileExists(atPath: path) {
-                let attributes = try? FileManager.default.attributesOfItem(atPath: path)
-                existingBytes = (attributes?[.size] as? Int64) ?? 0
+            if resumption != .disabled,
+                let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+                let size = attributes[.size] as? Int64
+            {
+                existingBytes = size
             } else {
                 existingBytes = 0
             }
@@ -563,7 +567,8 @@ extension RequestExecutor {
                     onProgress: onProgress
                 )
 
-                return
+                outcome = .success(())
+                shouldRetry = false
             } catch {
                 let mappedError = mapError(
                     error,
@@ -572,19 +577,18 @@ extension RequestExecutor {
                     logger: logger
                 )
 
-                if try await evaluateRetry(
+                outcome = .failure(mappedError)
+                shouldRetry = try await evaluateRetry(
                     policy: activeRetryPolicy,
                     attempt: &attempt,
                     status: rawResponse?.status,
                     headers: rawResponse?.headers,
                     error: mappedError,
                     logger: logger
-                ) {
-                    continue
-                }
-
-                throw mappedError
+                )
             }
-        }
+        } while shouldRetry
+
+        try outcome.get()
     }
 }

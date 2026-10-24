@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Foundation
+import Logging
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
@@ -759,13 +760,166 @@ extension RequestExecutorTests {
             #expect(netError.kind == .networkFailure)
         }
     }
+
+    @Test(
+        "RequestExecutorTests: Verifies 206 without Content-Range derives total from Content-Length plus existing bytes"
+    )
+    func testDownloadPartialContentFallsBackToContentLength() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let destURL = tempDir.appendingPathComponent("test_resume_len_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        try Data("0123456789".utf8).write(to: destURL)
+
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com/file.bin",
+            outcome: .success(
+                status: .partialContent,
+                headers: ["Content-Length": "5"],
+                body: ByteBuffer(string: "ABCDE")
+            )
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/file.bin")
+
+        let reportedTotal = NIOLockedValueBox<Int64?>(nil)
+
+        try await executor.execute(
+            downloadTo: destURL.path,
+            resumption: .ifPossible(),
+            onProgress: { _, total in
+                reportedTotal.withLockedValue { $0 = total }
+            }
+        )
+
+        #expect(reportedTotal.withLockedValue { $0 } == 15)
+        #expect(try String(contentsOf: destURL, encoding: .utf8) == "0123456789ABCDE")
+    }
+
+    @Test("RequestExecutorTests: Verifies empty response body produces an empty file on disk")
+    func testDownloadEmptyBodyCreatesEmptyFile() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let destURL = tempDir.appendingPathComponent("test_empty_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com/empty-file",
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/empty-file")
+
+        try await executor.execute(downloadTo: destURL.path)
+
+        let size = try FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int64
+        #expect(size == 0)
+    }
+
+    @Test(
+        "RequestExecutorTests: Verifies body stream failure mid-download is wrapped as networkFailure"
+    )
+    func testDownloadBodyStreamFailureThrowsNetworkFailure() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let destURL = tempDir.appendingPathComponent("test_stream_drop_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let underlyingClient = StreamingHTTPClient(
+            status: .ok,
+            headers: [:],
+            chunks: [ByteBuffer(string: "partial")],
+            failure: MockStubOutageError()
+        )
+        let client = NetSkeinClient(underlyingClient: underlyingClient)
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/stream-drop",
+            retryPolicy: .disabled
+        )
+
+        do {
+            try await executor.execute(downloadTo: destURL.path)
+            Issue.record("Expected download to throw .networkFailure when the body stream fails")
+        } catch {
+            #expect(error.kind == .networkFailure)
+            #expect(error.errorDescription?.contains("Network connection dropped") == true)
+        }
+    }
+
+    @Test(
+        "RequestExecutorTests: Verifies filesystem error while seeking the download target is wrapped as ioFailure"
+    )
+    func testDownloadSeekFailureThrowsIOFailure() async throws {
+        // A named pipe can be opened for writing but cannot be seeked, so seekToEnd() throws
+        let fifo = try makeFIFOWithReader()
+        defer {
+            close(fifo.readerFD)
+            unlink(fifo.path)
+        }
+
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com/file.bin",
+            outcome: .success(status: .partialContent, headers: [:], body: ByteBuffer(string: "AB"))
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/file.bin",
+            retryPolicy: .disabled
+        )
+
+        do {
+            try await executor.execute(downloadTo: fifo.path, resumption: .ifPossible())
+            Issue.record("Expected download to throw .ioFailure when the target cannot be seeked")
+        } catch {
+            #expect(error.kind == .ioFailure)
+            #expect(error.errorDescription?.contains("preparing download target") == true)
+        }
+    }
+
+    @Test(
+        "RequestExecutorTests: Verifies disk write failure while streaming chunks is wrapped as ioFailure"
+    )
+    func testDownloadChunkWriteFailureThrowsIOFailure() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let destURL = tempDir.appendingPathComponent("test_write_fail_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let underlyingClient = StreamingHTTPClient(
+            status: .ok,
+            headers: [:],
+            chunks: [ByteBuffer(string: "first"), ByteBuffer(string: "second")]
+        )
+        let client = NetSkeinClient(underlyingClient: underlyingClient)
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/write-fail",
+            retryPolicy: .disabled
+        )
+
+        do {
+            // After the first chunk lands, revoke write access so the second chunk's write fails
+            try await executor.execute(
+                downloadTo: destURL.path,
+                onProgress: { _, _ in
+                    revokeWriteAccess(toOpenFileAt: destURL.path)
+                }
+            )
+            Issue.record("Expected download to throw .ioFailure when writing a chunk fails")
+        } catch {
+            #expect(error.kind == .ioFailure)
+            #expect(error.errorDescription?.contains("Failed writing chunk") == true)
+        }
+    }
 }
 
 // MARK: - Test Factory Helpers
 
 extension RequestExecutorTests {
-    fileprivate func makeExecutor(
-        client: NetSkeinClient<MockHTTPClient>,
+    private func makeExecutor<Client: HTTPClientProtocol>(
+        client: NetSkeinClient<Client>,
         method: HTTPMethod = .GET,
         url: String,
         headers: HTTPHeaders = [:],
@@ -773,7 +927,7 @@ extension RequestExecutorTests {
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024
-    ) -> RequestExecutor<MockHTTPClient> {
+    ) -> RequestExecutor<Client> {
         RequestExecutor(
             client: client,
             method: method,
@@ -785,4 +939,59 @@ extension RequestExecutorTests {
             maxResponseBytes: maxResponseBytes
         )
     }
+
+    /// Creates a named pipe with a non-blocking reader attached, so writers can open it without blocking.
+    private func makeFIFOWithReader() throws -> (path: String, readerFD: Int32) {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_fifo_\(UUID().uuidString)").path
+        try #require(mkfifo(path, 0o644) == 0)
+        let readerFD = open(path, O_RDONLY | O_NONBLOCK)
+        try #require(readerFD >= 0)
+        return (path, readerFD)
+    }
+
+    /// Swaps the process's open write descriptor for `path` with a read-only one, so the next write fails.
+    private func revokeWriteAccess(toOpenFileAt path: String) {
+        let targetPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+
+        for fd in 0..<getdtablesize() where fcntl(fd, F_GETPATH, &buffer) != -1 {
+            let openPath = String(
+                decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                as: UTF8.self
+            )
+            guard URL(fileURLWithPath: openPath).resolvingSymlinksInPath().path == targetPath
+            else { continue }
+
+            let readOnlyFD = open(path, O_RDONLY)
+            dup2(readOnlyFD, fd)
+            close(readOnlyFD)
+        }
+    }
+}
+
+// MARK: - Streaming Mock Client
+
+/// Serves a fixed response whose body is streamed chunk by chunk, optionally failing after the last chunk.
+private struct StreamingHTTPClient: HTTPClientProtocol {
+    let status: HTTPResponseStatus
+    let headers: HTTPHeaders
+    let chunks: [ByteBuffer]
+    var failure: (any Error & Sendable)? = nil
+
+    func execute(
+        _ request: HTTPClientRequest,
+        timeout: TimeAmount,
+        logger: Logger?
+    ) async throws -> HTTPClientResponse {
+        let body = AsyncThrowingStream<ByteBuffer, any Error> { continuation in
+            for chunk in chunks {
+                continuation.yield(chunk)
+            }
+            continuation.finish(throwing: failure)
+        }
+        return HTTPClientResponse(status: status, headers: headers, body: .stream(body))
+    }
+
+    func shutdown() async throws {}
 }
