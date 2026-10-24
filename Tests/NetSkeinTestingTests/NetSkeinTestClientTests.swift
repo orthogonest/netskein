@@ -219,6 +219,20 @@ struct NetSkeinTestClientBuilderTests {
     }
 
     @Test(
+        "NetSkeinTestClientBuilderTests: Verify retry policy replace default policy"
+    )
+    func retryPolicyConfigurationUpdatesValue() {
+        let policy = RetryPolicy.standard(maxRetries: 5)
+
+        let client = NetSkeinClient.testing()
+            .retryPolicy(policy)
+            .build()
+
+        #expect(client.retryPolicy.maxRetries == policy.maxRetries)
+        #expect(client.retryPolicy.respectRetryAfterHeader == policy.respectRetryAfterHeader)
+    }
+
+    @Test(
         "NetSkeinTestClientBuilderTests: Verify custom logger settings replace framework operational defaults"
     )
     func loggerConfigurationUpdatesValue() {

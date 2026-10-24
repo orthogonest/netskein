@@ -8,10 +8,12 @@ public struct NetSkeinStub: Sendable {
         case failure(any Error & Sendable)
     }
 
+    public typealias Validator = @Sendable (HTTPClientRequest) throws -> Void
+
     public let method: HTTPMethod
     public let urlMatcher: @Sendable (String) -> Bool
     public let delay: TimeAmount?
-    public let requestValidator: (@Sendable (HTTPClientRequest) throws -> Void)?
+    public let requestValidator: Validator?
     public let outcome: Outcome
 
     public init(

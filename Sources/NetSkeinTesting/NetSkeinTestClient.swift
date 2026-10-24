@@ -86,6 +86,7 @@ extension MockHTTPClient: HTTPClientProtocol {
 public struct NetSkeinTestClientBuilder: Sendable {
     private var defaultHeaders: HTTPHeaders
     private var cookieJar: NetSkeinCookieJar?
+    private var retryPolicy: RetryPolicy
     private var logger: Logger
     private var stubs: [NetSkeinStub]
     private var stubOnShutdown: (@Sendable () async throws -> Void)?
@@ -93,6 +94,7 @@ public struct NetSkeinTestClientBuilder: Sendable {
     public init() {
         self.stubs = []
         defaultHeaders = HTTPHeaders()
+        retryPolicy = .standard()
         logger = Logger(label: Label.identifier)
     }
 }
@@ -109,6 +111,13 @@ extension NetSkeinTestClientBuilder {
     public func cookieStore(_ jar: NetSkeinCookieJar) -> Self {
         var copy = self
         copy.cookieJar = jar
+        return copy
+    }
+
+    @discardableResult
+    public func retryPolicy(_ policy: RetryPolicy) -> Self {
+        var copy = self
+        copy.retryPolicy = policy
         return copy
     }
 
@@ -148,6 +157,7 @@ extension NetSkeinTestClientBuilder {
             underlyingClient: client,
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
+            retryPolicy: retryPolicy,
             logger: logger
         )
     }

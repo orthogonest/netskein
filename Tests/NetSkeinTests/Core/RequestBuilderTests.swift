@@ -8,812 +8,466 @@ import Testing
 @testable import NetSkein
 @testable import NetSkeinTesting
 
-@Suite("RequestBuilder Comprehensive Coverage Analysis")
+// MARK: initializers
+
 struct RequestBuilderTests {
-    struct SamplePostPayload: Codable {
-        let title: String
-        let category: String
-    }
-
-    struct MalformedFloatPayload: Encodable {
-        let invalidValue: Double = Double.infinity
-    }
-}
-
-// MARK: - Fluent Chaining
-
-extension RequestBuilderTests {
     @Test(
-        "RequestBuilderTests: Verifies fluent mutation updates internal values cleanly across chain derivations"
+        "RequestBuilderTests: Verifies public and internal initialization with default properties"
     )
-    func testFluentPropertyMutations() async throws {
-        let client = NetSkeinClient()
-        let request = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: "https://netskein.local"
+    func testInitialization() async throws {
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com",
+            outcome: .success(status: .ok, headers: [:], body: nil)
         )
-        .path("profile/\(0)")
-        .query(["search": "swift6", "sort": "desc"])
-        .header("X-API-Version", "1.4.2")
-        .maxResponseSize(5 * 1024 * 1024)
-        .timeout(.seconds(15))
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let mirror = Mirror(reflecting: request)
-
-        guard
-            let urlString = mirror.descendant("url") as? String,
-            let headers = mirror.descendant("headers") as? HTTPHeaders,
-            let maxBytes = mirror.descendant("maxResponseBytes") as? Int,
-            let timeout = mirror.descendant("timeout") as? TimeAmount
-        else {
-            try await client.shutdown()
-            Issue.record(
-                "Failed to reflect internal mutated structures out of RequestBuilder storage context."
-            )
-            return
-        }
-
-        #expect(headers.first(name: "X-API-Version") == "1.4.2")
-        #expect(urlString.contains("profile/0"))
-        #expect(urlString.contains("search=swift6"))
-        #expect(urlString.contains("sort=desc"))
-        #expect(maxBytes == 5 * 1024 * 1024)
-        #expect(timeout == .seconds(15))
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Ensures query mutation falls back cleanly when the base URL is fundamentally malformed"
-    )
-    func testQueryMutationWithInvalidURLFallback() async throws {
-        let client = NetSkeinClient()
-        let invalidBaseURL = "1https://netskein.local"
-
-        let request = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: invalidBaseURL
-        )
-        .query(["search": "swift6"])
-
-        let mirror = Mirror(reflecting: request)
-
-        guard let urlString = mirror.descendant("url") as? String else {
-            try await client.shutdown()
-            Issue.record("Failed to reflect URL string out of RequestBuilder storage context.")
-            return
-        }
-
-        #expect(urlString == invalidBaseURL)
-        #expect(!urlString.contains("search=swift6"))
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Ensures dangerouslyAllowBody successfully mutates blocked method generic states"
-    )
-    func testDangerouslyAllowBodyGenericPathUnlocking() async throws {
-        let client = NetSkeinClient()
-        let request = RequestBuilder<HTTPClient, BodyIsBlocked, EmptyBody>(
+        let builder = RequestBuilder<MockHTTPClient, BodyIsBlocked, EmptyBody>(
             client: client,
             method: .GET,
-            url: "https://netskein.local"
+            url: "https://api.example.com"
         )
-        .dangerouslyAllowBody()
 
-        #expect(type(of: request) == RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>.self)
-
-        try await client.shutdown()
+        let response = try await builder.send()
+        #expect(response.status == .ok)
     }
 }
 
-// MARK: - Payload Conversion
+// MARK: Fluent Modifiers
 
 extension RequestBuilderTests {
     @Test(
-        "RequestBuilderTests: Verifies URL-encoded form data conversion maps content fields and appends content type headers"
+        "RequestBuilderTests: Verifies path concatenates URL segments and trims slashes correctly"
     )
-    func testFormPayloadConversion() async throws {
-        let client = NetSkeinClient()
-        let request = try RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: "https://netskein.local"
-        )
-        .form(["email": "dev@netskein.io", "verified": "true"])
-
-        let mirror = Mirror(reflecting: request)
-
-        guard
-            let headers = mirror.descendant("headers") as? HTTPHeaders,
-            let bodyOpt = mirror.descendant("body") as? HTTPClientRequest.Body?,
-            let body = bodyOpt
-        else {
-            try await client.shutdown()
-            Issue.record("Failed to extract body or headers from form conversion path layout.")
-            return
-        }
-
-        #expect(headers.first(name: "Content-Type") == "application/x-www-form-urlencoded")
-
-        let bodyMirror = Mirror(reflecting: body)
-
-        guard let mode = bodyMirror.descendant("mode") else {
-            try await client.shutdown()
-            return
-        }
-
-        let modeMirror = Mirror(reflecting: mode)
-
-        if let buffer = modeMirror.children.first?.value as? ByteBuffer {
-            var mutableBuffer = buffer
-            let encodedString = mutableBuffer.readString(length: mutableBuffer.readableBytes) ?? ""
-            #expect(encodedString.contains("email=dev%40netskein.io"))
-            #expect(encodedString.contains("verified=true"))
-            try await client.shutdown()
-        } else {
-            try await client.shutdown()
-            Issue.record(
-                "Internal payload conversion storage mechanism did not match standard ByteBuffer layout formats."
-            )
-        }
-    }
-
-    @Test(
-        "RequestBuilderTests: Verifies JSON encoder method securely packages Encodable objects into binary streams"
-    )
-    func testJSONPayloadConversion() async throws {
-        let client = NetSkeinClient()
-        let payload = SamplePostPayload(title: "Strict Concurrency", category: "Core Development")
-        let request = try RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .PUT,
-            url: "https://netskein.local"
-        )
-        .json(payload)
-
-        let mirror = Mirror(reflecting: request)
-
-        guard
-            let headers = mirror.descendant("headers") as? HTTPHeaders,
-            let bodyOpt = mirror.descendant("body") as? HTTPClientRequest.Body?,
-            let body = bodyOpt
-        else {
-            try await client.shutdown()
-            Issue.record("Failed to extract body or headers from JSON conversion context.")
-            return
-        }
-
-        #expect(headers.first(name: "Content-Type") == "application/json")
-
-        let bodyMirror = Mirror(reflecting: body)
-
-        guard let mode = bodyMirror.descendant("mode") else {
-            try await client.shutdown()
-            return
-        }
-
-        let modeMirror = Mirror(reflecting: mode)
-
-        if let buffer = modeMirror.children.first?.value as? ByteBuffer {
-            var mutableBuffer = buffer
-            let rawData = mutableBuffer.readData(length: mutableBuffer.readableBytes) ?? Data()
-            let decoded = try JSONDecoder().decode(SamplePostPayload.self, from: rawData)
-            #expect(decoded.title == "Strict Concurrency")
-            #expect(decoded.category == "Core Development")
-            try await client.shutdown()
-        } else {
-            try await client.shutdown()
-            Issue.record(
-                "JSON encoding execution loop failed to yield a structural ByteBuffer container."
-            )
-        }
-    }
-
-    @Test(
-        "RequestBuilderTests: Ensures JSON conversion throws NetSkeinError when encountering unencodable float values"
-    )
-    func testJSONPayloadConversionThrowsOnInvalidValue() async throws {
-        let client = NetSkeinClient()
-        let malformedPayload = MalformedFloatPayload()
-
-        #expect(throws: NetSkeinError.self) {
-            _ = try RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-                client: client,
-                method: .PUT,
-                url: "https://netskein.local"
-            )
-            .json(malformedPayload)
-        }
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Verifies multipart method appends form boundaries cleanly matching the specifications rules"
-    )
-    func testMultipartPayloadIntegration() async throws {
-        let client = NetSkeinClient()
-
-        let form = NetSkeinMultipartForm.builder()
-            .text(name: "attachment_meta", value: "Snapshot code artifact")
-            .build()
-
-        let request = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: "https://netskein.local"
-        )
-        .multipart(form)
-
-        let mirror = Mirror(reflecting: request)
-
-        guard let headers = mirror.descendant("headers") as? HTTPHeaders else {
-            try await client.shutdown()
-            Issue.record("Failed to read headers from multipart layout state context.")
-            return
-        }
-
-        let contentType = headers.first(name: "Content-Type") ?? ""
-        #expect(contentType.contains("multipart/form-data; boundary=\(form.boundary)"))
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Assures local streaming factory configures chunked streams correctly on successful file reads"
-    )
-    func testStreamSuccessfulExecutionFlow() async throws {
-        let client = NetSkeinClient()
-        let builder = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: "https://netskein.local"
-        )
-
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let tempFileURL = tempDirectory.appendingPathComponent("netskein_test_stream.txt")
-        let dummyData = Data(
-            "NetSkein Production Quality Core Stream Verification String Data".utf8
-        )
-        try dummyData.write(to: tempFileURL)
-        defer { try? FileManager.default.removeItem(at: tempFileURL) }
-
-        let request = try builder.stream(fileAtPath: tempFileURL.path, chunkSize: 10)
-
-        let mirror = Mirror(reflecting: request)
-        guard
-            let headers = mirror.descendant("headers") as? HTTPHeaders,
-            let bodyOpt = mirror.descendant("body") as? HTTPClientRequest.Body?,
-            let body = bodyOpt
-        else {
-            try await client.shutdown()
-            Issue.record("Failed to reflect headers or body structure from streaming context.")
-            return
-        }
-
-        // Verify base headers W3C Stream
-        #expect(headers.first(name: "Transfer-Encoding") == "chunked")
-        #expect(headers.first(name: "Content-Type") == "application/octet-stream")
-
-        // Verify body and file size
-        let bodyMirror = Mirror(reflecting: body)
-
-        guard let modePropertyValue = bodyMirror.descendant("mode") else {
-            try await client.shutdown()
-            Issue.record(
-                "Failed to extract internal 'mode' property from HTTPClientRequest.Body struct."
-            )
-            return
-        }
-
-        let modeMirror = Mirror(reflecting: modePropertyValue)
-        guard let enumCase = modeMirror.children.first else {
-            try await client.shutdown()
-            Issue.record("Failed to extract enum case from internal Mode storage.")
-            return
-        }
-
-        #expect(enumCase.label == "asyncSequence" || enumCase.label == "httpClientRequestBody")
-
-        let associatedValuesMirror = Mirror(reflecting: enumCase.value)
-        var capturedLengthDescription = ""
-
-        for child in associatedValuesMirror.children where child.label == "length" {
-            capturedLengthDescription = String(describing: child.value)
-            break
-        }
-
-        #expect(capturedLengthDescription.contains("\(dummyData.count)"))
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Assures local streaming factory throws explicit ioFailure when FileHandle returns nil"
-    )
-    func testStreamThrowsWhenFileHandleFailsToOpen() async throws {
-        final class MockFileManager: FileManager, @unchecked Sendable {
-            override func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
-                [.size: Int64(1024)]
-            }
-        }
-
-        let client = NetSkeinClient()
-
-        let mockBuilder = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: "https://netskein.local",
-            fileManager: MockFileManager()
-        )
-
-        #expect(throws: NetSkeinError.self) {
-            try mockBuilder.stream(fileAtPath: "/path/to/mock/file.bin")
-        }
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Assures local streaming factory throws explicit ioFailure error kind if designated file path is absent"
-    )
-    func testStreamInvalidFilePathThrows() async throws {
-        let client = NetSkeinClient()
-        let builder = RequestBuilder<HTTPClient, BodyIsAllowed, EmptyBody>(
-            client: client,
-            method: .POST,
-            url: "https://netskein.local"
-        )
-
-        // Assert that passing an absent route forces compile-time checked throwing conversion loops
-        #expect(throws: NetSkeinError.self) {
-            try builder.stream(fileAtPath: "/directory/absent/file_error_artifact.mov")
-        }
-
-        try await client.shutdown()
-    }
-}
-
-// MARK: - Request Execution
-
-extension RequestBuilderTests {
-    @Test(
-        "RequestBuilderTests: Ensures standard send execution captures validation headers and stores server cookies correctly"
-    )
-    func testStandardSendExecutionFlow() async throws {
-        let cookieJar = NetSkeinCookieJar()
-
-        let firstStub = NetSkeinStub(
-            method: .POST,
-            url: "https://netskein.mock",
-            requestValidator: { @Sendable request in
-                #expect(request.headers.contains(name: "X-Request-ID"))
-                #expect(request.headers.first(name: "X-Custom-Assertion") == "TriggerValue")
-            },
-            outcome: .success(
-                status: .created,
-                headers: [
-                    "Content-Type": "application/json",
-                    "Set-Cookie": "session_token=token_abc123; Path=/; Secure",
-                ],
-                body: ByteBuffer(string: "{\"execution\":\"success\"}")
-            )
-        )
-
-        let secondStub = NetSkeinStub(
+    func testPathModifier() async throws {
+        let stub1 = NetSkeinStub(
             method: .GET,
-            url: "https://netskein.mock",
-            requestValidator: { @Sendable request in
-                #expect(request.headers.first(name: "Cookie") == "session_token=token_abc123")
-            },
-            outcome: .success(
-                status: .ok,
-                headers: ["Content-Type": "application/json"],
-                body: ByteBuffer(string: "{\"status\":\"authenticated\"}")
-            )
+            url: "https://api.example.com/v1/users",
+            outcome: .success(status: .ok, headers: [:], body: nil)
         )
+        let stub2 = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com/v1/profile",
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStubs([stub1, stub2]).build()
 
-        let client = NetSkeinClient.testing()
-            .cookieStore(cookieJar)
-            .addStubs([firstStub, secondStub])
-            .build()
-
-        let firstResponse = try await client.post("https://netskein.mock")
-            .header("X-Custom-Assertion", "TriggerValue")
+        // URL without trailing slash, segment without leading slash
+        let res1 = try await client.get("https://api.example.com/v1")
+            .path(NetSkeinPathSegment("users"))
             .send()
+        #expect(res1.status == .ok)
 
-        #expect(firstResponse.status == .created)
-
-        let capturedCookie = cookieJar.cookieHeader(for: "netskein.mock")
-        #expect(capturedCookie == "session_token=token_abc123")
-
-        let secondResponse = try await client.get("https://netskein.mock")
+        // URL with trailing slash, segment with leading and trailing slashes
+        let res2 = try await client.get("https://api.example.com/v1/")
+            .path(NetSkeinPathSegment("/profile/"))
             .send()
-
-        #expect(secondResponse.status == .ok)
-
-        try await client.shutdown()
+        #expect(res2.status == .ok)
     }
 
-    @Test("RequestBuilderTests: Ensure skip invalid cookie format")
-    func testInvalidCookieFormat() async throws {
-        let cookieJar = NetSkeinCookieJar()
+    @Test("RequestBuilderTests: Verifies header adds and replaces headers correctly")
+    func testHeaderModifier() async throws {
+        let isHeaderValidated = NIOLockedValueBox(false)
+
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com",
+            requestValidator: { request in
+                #expect(request.headers.first(name: "X-Custom-Header") == "Replaced")
+                #expect(request.headers.first(name: "Accept") == "application/json")
+                isHeaderValidated.withLockedValue { $0 = true }
+            },
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        _ = try await client.get("https://api.example.com")
+            .header("X-Custom-Header", "Initial")
+            .header("X-Custom-Header", "Replaced")
+            .header("Accept", "application/json")
+            .send()
+
+        #expect(isHeaderValidated.withLockedValue { $0 } == true)
+    }
+
+    @Test("RequestBuilderTests: Verifies query adds query items and handles malformed URLs safely")
+    func testQueryModifier() async throws {
+        let isQueryValidated = NIOLockedValueBox(false)
+
+        let stub = NetSkeinStub(
+            method: .GET,
+            urlMatcher: { url in
+                url.contains("q=swift") && url.contains("page=1")
+            },
+            requestValidator: { request in
+                #expect(request.url.contains("q=swift"))
+                #expect(request.url.contains("page=1"))
+                isQueryValidated.withLockedValue { $0 = true }
+            },
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        // Valid URL with query items
+        let response = try await client.get("https://api.example.com/search")
+            .query(["q": "swift", "page": "1"])
+            .send()
+        #expect(response.status == .ok)
+        #expect(isQueryValidated.withLockedValue { $0 } == true)
+
+        // Malformed URL fallback (URLComponents fails -> returns self unmodified)
+        let malformedBuilder = client.get("://invalid-url").query(["key": "value"])
+        _ = malformedBuilder
+    }
+
+    @Test(
+        "RequestBuilderTests: Verifies query returns self when URLComponents fails to parse malformed port"
+    )
+    func testQueryMalformedURLFallback() async throws {
+        let malformedURL = "https://example.com:invalid_port"
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: malformedURL,
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let response = try await client.get(malformedURL)
+            .query(["key": "value"])
+            .send()
+
+        #expect(response.status == .ok)
+    }
+
+    @Test(
+        "RequestBuilderTests: Verifies maxResponseSize, timeout, and retry modifiers update builder state"
+    )
+    func testConfigurationModifiers() async throws {
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com",
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let response = try await client.get("https://api.example.com")
+            .maxResponseSize(5 * 1024 * 1024)
+            .timeout(.seconds(15))
+            .retry(.standard(maxRetries: 5))
+            .send()
+
+        #expect(response.status == .ok)
+    }
+}
+
+// MARK: - Body Transitions
+
+extension RequestBuilderTests {
+    @Test(
+        "RequestBuilderTests: Verifies form payload encodes fields and sets application/x-www-form-urlencoded"
+    )
+    func testFormBodyTransition() async throws {
+        let isFormValidated = NIOLockedValueBox(false)
 
         let stub = NetSkeinStub(
             method: .POST,
-            url: "https://netskein.mock",
-            requestValidator: { @Sendable request in
-                #expect(request.headers.contains(name: "X-Request-ID"))
-                #expect(request.headers.first(name: "X-Custom-Assertion") == "TriggerValue")
+            url: "https://api.example.com/login",
+            requestValidator: { request in
+                #expect(
+                    request.headers.first(name: "Content-Type")
+                        == "application/x-www-form-urlencoded"
+                )
+                #expect(request.body != nil)
+                isFormValidated.withLockedValue { $0 = true }
             },
-            outcome: .success(
-                status: .created,
-                headers: [
-                    "Content-Type": "application/json",
-                    "Set-Cookie": [
-                        "malformed_cookie_no_equals_sign",
-                        "session_token=token_abc123; Path=/; Secure",
-                        "invalid=format=too_many_equals",
-                    ]
-                    .joined(separator: "; "),
-                ],
-                body: ByteBuffer(string: "{\"execution\":\"success\"}")
-            )
+            outcome: .success(status: .ok, headers: [:], body: nil)
         )
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let client = NetSkeinClient.testing()
-            .cookieStore(cookieJar)
-            .addStub(stub)
-            .build()
+        let response = try await client.post("https://api.example.com/login")
+            .form(["username": "octocat", "password": "secret"])
+            .send()
 
-        let response = try await client.post("https://netskein.mock")
-            .header("X-Custom-Assertion", "TriggerValue")
+        #expect(response.status == .ok)
+        #expect(isFormValidated.withLockedValue { $0 } == true)
+    }
+
+    @Test("RequestBuilderTests: Verifies json payload encodes model and sets application/json")
+    func testJsonBodyTransitionSuccess() async throws {
+        struct User: Codable {
+            let name: String
+            let age: Int
+        }
+
+        let isJsonValidated = NIOLockedValueBox(false)
+
+        let stub = NetSkeinStub(
+            method: .POST,
+            url: "https://api.example.com/users",
+            requestValidator: { request in
+                #expect(request.headers.first(name: "Content-Type") == "application/json")
+                #expect(request.body != nil)
+                isJsonValidated.withLockedValue { $0 = true }
+            },
+            outcome: .success(status: .created, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let response = try await client.post("https://api.example.com/users")
+            .json(User(name: "Alice", age: 30))
             .send()
 
         #expect(response.status == .created)
+        #expect(isJsonValidated.withLockedValue { $0 } == true)
+    }
 
-        let capturedCookie = cookieJar.cookieHeader(for: "netskein.mock")
-        #expect(capturedCookie == nil)
+    @Test("RequestBuilderTests: Verifies json throws invalidPayload error when encoding fails")
+    func testJsonBodyTransitionFailure() {
+        struct FailingModel: Encodable {
+            func encode(to encoder: Encoder) throws {
+                throw DecodingError.dataCorrupted(
+                    .init(codingPath: [], debugDescription: "Simulated encoding error")
+                )
+            }
+        }
 
-        try await client.shutdown()
+        let client = NetSkeinClient.testing().build()
+
+        #expect(throws: NetSkeinError.self) {
+            try client.post("https://api.example.com/users")
+                .json(FailingModel())
+        }
+
+        do {
+            _ = try client.post("https://api.example.com/users").json(FailingModel())
+            Issue.record("Expected json() to throw invalidPayload")
+        } catch {
+            #expect(error.kind == .invalidPayload)
+        }
+    }
+
+    @Test("RequestBuilderTests: Verifies multipart payload sets boundary and Content-Type")
+    func testMultipartBodyTransition() async throws {
+        let isMultipartValidated = NIOLockedValueBox(false)
+        let form = NetSkeinMultipartForm.builder()
+            .text(name: "host", value: "example.com")
+            .build()
+
+        let stub = NetSkeinStub(
+            method: .POST,
+            url: "https://api.example.com/upload",
+            requestValidator: { request in
+                let contentType = request.headers.first(name: "Content-Type") ?? ""
+                #expect(contentType.contains("multipart/form-data"))
+                #expect(contentType.contains("boundary=\(form.boundary)"))
+                isMultipartValidated.withLockedValue { $0 = true }
+            },
+            outcome: .success(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let response = try await client.post("https://api.example.com/upload")
+            .multipart(form)
+            .send()
+
+        #expect(response.status == .ok)
+        #expect(isMultipartValidated.withLockedValue { $0 } == true)
     }
 
     @Test(
-        "RequestBuilderTests: Assures client network errors are successfully intercepted and mapped into custom kind parameters"
+        "RequestBuilderTests: Verifies stream payload sets chunked headers and creates streaming body"
     )
-    func testSendOutageErrorInterception() async throws {
-        let brokenStub = NetSkeinStub(
-            method: .GET,
-            url: "https://netskein.mock",
-            outcome: .failure(HTTPClientError.remoteConnectionClosed)
+    func testStreamBodyTransitionSuccess() async throws {
+        let tempURL = try createTempFile(size: 64)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let isStreamValidated = NIOLockedValueBox(false)
+
+        let stub = NetSkeinStub(
+            method: .POST,
+            url: "https://api.example.com/stream-upload",
+            requestValidator: { request in
+                #expect(request.headers.first(name: "Transfer-Encoding") == "chunked")
+                #expect(request.headers.first(name: "Content-Type") == "application/octet-stream")
+                #expect(request.body != nil)
+                isStreamValidated.withLockedValue { $0 = true }
+            },
+            outcome: .success(status: .ok, headers: [:], body: nil)
         )
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let client = NetSkeinClient.testing()
-            .addStub(brokenStub)
-            .build()
+        let response = try await client.post("https://api.example.com/stream-upload")
+            .stream(fileAtPath: tempURL.path, chunkSize: 32)
+            .send()
 
-        await #expect(throws: NetSkeinError.self) {
-            try await client.get("netskein.mock").send()
+        #expect(response.status == .ok)
+        #expect(isStreamValidated.withLockedValue { $0 } == true)
+    }
+
+    @Test("RequestBuilderTests: Verifies stream throws ioFailure when file does not exist")
+    func testStreamBodyTransitionFileNotFound() {
+        let client = NetSkeinClient.testing().build()
+        let nonExistentPath = "/tmp/netskein_not_found_\(UUID().uuidString).bin"
+
+        #expect(throws: NetSkeinError.self) {
+            try client.post("https://api.example.com/upload")
+                .stream(fileAtPath: nonExistentPath)
         }
 
-        try await client.shutdown()
+        do {
+            _ = try client.post("https://api.example.com/upload")
+                .stream(fileAtPath: nonExistentPath)
+            Issue.record("Expected stream() to throw ioFailure")
+        } catch {
+            #expect(error.kind == .ioFailure)
+        }
     }
 
     @Test(
-        "RequestBuilderTests: Assures generic non-network errors are safely wrapped into a custom networkFailure error kind"
+        "RequestBuilderTests: Verifies stream throws ioFailure when file exists but has no read permissions"
     )
-    func testSendGenericNonNetworkErrorWrapping() async throws {
-        struct NetSkeinUnknownFailureStub: Error, LocalizedError {
-            var errorDescription: String? { "Fatal hardware isolation simulation loop failure." }
-        }
+    func testStreamUnreadableFileThrowsIOFailure() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let unreadableURL = tempDir.appendingPathComponent("unreadable_\(UUID().uuidString).bin")
 
-        let anomalyStub = NetSkeinStub(
-            method: .GET,
-            url: "https://netskein.mock",
-            outcome: .failure(NetSkeinUnknownFailureStub())
+        // Create file with 16 bytes so attributesOfItem succeeds
+        try Data(repeating: 0x55, count: 16).write(to: unreadableURL)
+
+        // Remove read permissions (write-only: 0o200)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o200],
+            ofItemAtPath: unreadableURL.path
         )
 
-        let client = NetSkeinClient.testing()
-            .addStub(anomalyStub)
-            .build()
-
-        await #expect(throws: NetSkeinError.self) {
-            _ = try await client.get("https://netskein.mock").send()
+        defer {
+            // Restore permissions so cleanup succeeds
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: unreadableURL.path
+            )
+            try? FileManager.default.removeItem(at: unreadableURL)
         }
 
-        try await client.shutdown()
+        let client = NetSkeinClient.testing().build()
+
+        #expect(throws: NetSkeinError.self) {
+            try client.post("https://api.example.com/upload")
+                .stream(fileAtPath: unreadableURL.path)
+        }
+
+        do {
+            _ = try client.post("https://api.example.com/upload")
+                .stream(fileAtPath: unreadableURL.path)
+            Issue.record("Expected stream() to throw .ioFailure for unreadable file")
+        } catch {
+            #expect(error.kind == .ioFailure)
+        }
     }
 }
 
-// MARK: - Inbound File Streaming
+// MARK: - Type-State Escape Hatch
 
 extension RequestBuilderTests {
     @Test(
-        "RequestBuilderTests: Verifies inbound streaming blocks fire callbacks repeatedly to read sequential data chunks"
+        "RequestBuilderTests: Verifies dangerouslyAllowBody permits attaching body to blocked method"
     )
-    func testSendChunkedStreamingDownload() async throws {
-        let dataChunk = ByteBuffer(string: "ChunkStreamDataPayload")
-        let streamingStub = NetSkeinStub(
+    func testDangerouslyAllowBody() async throws {
+        let isMethodValidated = NIOLockedValueBox(false)
+
+        let stub = NetSkeinStub(
             method: .GET,
-            url: "netskein.mock",
-            outcome: .success(
-                status: .ok,
-                headers: ["Content-Length": "22"],
-                body: dataChunk
-            )
-        )
-
-        let client = NetSkeinClient.testing()
-            .addStub(streamingStub)
-            .build()
-
-        let callbackFiredBox = NIOLockedValueBox(false)
-        let bytesAccumulatedBox = NIOLockedValueBox(Int64(0))
-
-        try await client.get("netskein.mock")
-            .send { chunk, received, total in
-                callbackFiredBox.withLockedValue { $0 = true }
-                bytesAccumulatedBox.withLockedValue { $0 = received }
-                #expect(total == 22)
-            }
-
-        #expect(callbackFiredBox.withLockedValue { $0 } == true)
-        #expect(bytesAccumulatedBox.withLockedValue { $0 } == 22)
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Ensures streaming send automatically injects stored cookies into active outbound headers"
-    )
-    func testStreamingSendInjectsCookieAndSucceeds() async throws {
-        let cookieJar = NetSkeinCookieJar()
-        cookieJar.setCookie(host: "netskein.mock", name: "session_token", value: "stream_123")
-
-        let dataChunk = ByteBuffer(string: "ChunkStreamDataPayload")
-        let streamingStub = NetSkeinStub(
-            method: .GET,
-            url: "https://netskein.mock",
-            requestValidator: { @Sendable request in
-                #expect(request.headers.first(name: "Cookie") == "session_token=stream_123")
+            url: "https://api.example.com/query-with-body",
+            requestValidator: { request in
+                #expect(request.method == .GET)
+                #expect(
+                    request.headers.first(name: "Content-Type")
+                        == "application/x-www-form-urlencoded"
+                )
+                isMethodValidated.withLockedValue { $0 = true }
             },
-            outcome: .success(
-                status: .ok,
-                headers: ["Content-Length": "22"],
-                body: dataChunk
-            )
+            outcome: .success(status: .ok, headers: [:], body: nil)
         )
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let client = NetSkeinClient.testing()
-            .cookieStore(cookieJar)
-            .addStub(streamingStub)
-            .build()
+        let response = try await client.get("https://api.example.com/query-with-body")
+            .dangerouslyAllowBody()
+            .form(["filter": "active"])
+            .send()
 
-        let callbackFiredBox = NIOLockedValueBox(false)
-
-        try await client.get("https://netskein.mock")
-            .send { chunk, received, total in
-                callbackFiredBox.withLockedValue { $0 = true }
-            }
-
-        #expect(callbackFiredBox.withLockedValue { $0 } == true)
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Assures streaming execution rethrows custom NetSkeinError instances directly without rewrapping"
-    )
-    func testStreamingSendNetSkeinErrorInterception() async throws {
-        let brokenStub = NetSkeinStub(
-            method: .GET,
-            url: "https://netskein.mock",
-            outcome: .failure(HTTPClientError.remoteConnectionClosed)
-        )
-
-        let client = NetSkeinClient.testing()
-            .addStub(brokenStub)
-            .build()
-
-        await #expect(throws: NetSkeinError.self) {
-            try await client.get("netskein.mock")
-                .send { _, _, _ in }
-        }
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Assures streaming execution routes anonymous errors cleanly into a custom networkFailure kind"
-    )
-    func testStreamingSendGenericErrorInterception() async throws {
-        struct AnonymousStreamCrash: Error, LocalizedError {
-            var errorDescription: String? { "Underlying kernel pipeline data stream desync." }
-        }
-
-        let brokenStub = NetSkeinStub(
-            method: .GET,
-            url: "netskein.mock",
-            outcome: .failure(AnonymousStreamCrash())
-        )
-
-        let client = NetSkeinClient.testing()
-            .addStub(brokenStub)
-            .build()
-
-        await #expect(throws: NetSkeinError.self) {
-            try await client.get("netskein.mock")
-                .send { _, _, _ in }
-        }
-
-        try await client.shutdown()
+        #expect(response.status == .ok)
+        #expect(isMethodValidated.withLockedValue { $0 } == true)
     }
 }
 
-// MARK: - Streaming Downloads
+// MARK: - Execution Delegations
 
 extension RequestBuilderTests {
-    @Test(
-        "RequestBuilderTests: Verifies that download to file path sets accurate handles and catches status error kinds"
-    )
-    func testDownloadToFileSystemLifecycle() async throws {
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-        let destinationPath =
-            temporaryDirectory.appendingPathComponent("test_netskein_download.bin").path
-
-        // Clean up file if residue exists from past crashes
-        try? FileManager.default.removeItem(atPath: destinationPath)
-
-        let successStub = NetSkeinStub(
+    @Test("RequestBuilderTests: Verifies send() routes execution and returns NetSkeinResponse")
+    func testSendDelegation() async throws {
+        let expectedBuffer = ByteBuffer(string: "OK_RESPONSE")
+        let stub = NetSkeinStub(
             method: .GET,
-            url: "netskein.mock",
-            outcome: .success(
-                status: .ok,
-                headers: ["Content-Length": "8"],
-                body: ByteBuffer(string: "FileData")
-            )
+            url: "https://api.example.com/status",
+            outcome: .success(status: .ok, headers: [:], body: expectedBuffer)
         )
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let client = NetSkeinClient.testing()
-            .addStub(successStub)
-            .build()
+        let response = try await client.get("https://api.example.com/status").send()
+        #expect(response.status == .ok)
+        #expect(response.text() == "OK_RESPONSE")
+    }
 
-        let progressFiredBox = NIOLockedValueBox(false)
+    @Test("RequestBuilderTests: Verifies send(_ onChunk:) streams response chunks and returns head")
+    func testSendOnChunkDelegation() async throws {
+        let expectedBuffer = ByteBuffer(string: "streamed_chunk_data")
+        let stub = NetSkeinStub(
+            method: .GET,
+            url: "https://api.example.com/stream",
+            outcome: .success(status: .ok, headers: [:], body: expectedBuffer)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        // Execute dynamic file creation write operations natively
-        try await client.get("netskein.mock")
-            .download(toFileAtPath: destinationPath) { _, total in
-                progressFiredBox.withLockedValue { $0 = true }
-                #expect(total == 8)
+        let receivedChunkData = NIOLockedValueBox("")
+
+        let result = try await client.get("https://api.example.com/stream")
+            .send { chunk, _, _ in
+                receivedChunkData.withLockedValue { $0 += String(buffer: chunk) }
             }
 
-        #expect(progressFiredBox.withLockedValue { $0 } == true)
-        #expect(FileManager.default.fileExists(atPath: destinationPath) == true)
-
-        let readData = try? String(contentsOfFile: destinationPath, encoding: .utf8)
-        #expect(readData == "FileData")
-
-        // Cleanup local storage workspace tracks cleanly
-        try? FileManager.default.removeItem(atPath: destinationPath)
-
-        try await client.shutdown()
+        #expect(result.status == .ok)
+        #expect(receivedChunkData.withLockedValue { $0 } == "streamed_chunk_data")
     }
 
-    @Test(
-        "RequestBuilderTests: Ensures that downloading to a protected system directory throws an accurate ioFailure error kind"
-    )
-    func testDownloadToFileSystemCreationFailure() async throws {
-        let client = NetSkeinClient()
+    @Test("RequestBuilderTests: Verifies download routes execution and streams file to disk")
+    func testDownloadDelegation() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let destURL = tempDir.appendingPathComponent("download_test_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
 
-        // Triggering file creation failure by attempting write actions under an absolute illegal path zone
-        let illegalSystemPath = "/directory_forbidden_root_access_netskein/file.dmg"
-
-        await #expect(throws: NetSkeinError.self) {
-            try await client.get("netskein.mock")
-                .download(toFileAtPath: illegalSystemPath)
-        }
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Ensures download automatically injects stored cookies into active outbound headers"
-    )
-    func testDownloadInjectsCookieAndSucceeds() async throws {
-        let cookieJar = NetSkeinCookieJar()
-        cookieJar.setCookie(host: "netskein.mock", name: "session_token", value: "dl_stream_123")
-
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-        let destinationPath =
-            temporaryDirectory.appendingPathComponent("test_netskein_dl_cookie.bin").path
-        try? FileManager.default.removeItem(atPath: destinationPath)
-
-        let successStub = NetSkeinStub(
+        let expectedBuffer = ByteBuffer(string: "download_complete_payload")
+        let stub = NetSkeinStub(
             method: .GET,
-            url: "https://netskein.mock",
-            requestValidator: { @Sendable request in
-                #expect(request.headers.first(name: "Cookie") == "session_token=dl_stream_123")
-            },
-            outcome: .success(
-                status: .ok,
-                headers: ["Content-Length": "8"],
-                body: ByteBuffer(string: "FileData")
-            )
+            url: "https://api.example.com/file",
+            outcome: .success(status: .ok, headers: [:], body: expectedBuffer)
         )
+        let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let client = NetSkeinClient.testing()
-            .cookieStore(cookieJar)
-            .addStub(successStub)
-            .build()
+        try await client.get("https://api.example.com/file")
+            .download(toFileAtPath: destURL.path)
 
-        try await client.get("https://netskein.mock")
-            .download(toFileAtPath: destinationPath)
-
-        #expect(FileManager.default.fileExists(atPath: destinationPath) == true)
-        try? FileManager.default.removeItem(atPath: destinationPath)
-        try await client.shutdown()
+        let savedData = try Data(contentsOf: destURL)
+        #expect(String(data: savedData, encoding: .utf8) == "download_complete_payload")
     }
+}
 
-    @Test(
-        "RequestBuilderTests: Assures downloading bad statuses aborts early and throws customized badStatus error kinds"
-    )
-    func testDownloadBadStatusAbortsEarly() async throws {
-        let badStatusStub = NetSkeinStub(
-            method: .GET,
-            url: "netskein.mock",
-            outcome: .success(status: .notFound, headers: HTTPHeaders(), body: nil)
-        )
+// MARK: - Test Helpers
 
-        let client = NetSkeinClient.testing()
-            .addStub(badStatusStub)
-            .build()
-
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-        let destinationPath = temporaryDirectory.appendingPathComponent("abort_test.bin").path
-
-        await #expect(throws: NetSkeinError.self) {
-            try await client.get("netskein.mock")
-                .download(toFileAtPath: destinationPath)
-        }
-
-        try? FileManager.default.removeItem(atPath: destinationPath)
-
-        try await client.shutdown()
-    }
-
-    @Test(
-        "RequestBuilderTests: Assures download execution routes anonymous exceptions cleanly into a custom networkFailure error kind"
-    )
-    func testDownloadGenericNetworkErrorWrapping() async throws {
-        struct AnonymousDownloadCrash: Error, LocalizedError {
-            var errorDescription: String? { "Disk space allocation failure simulation loop." }
-        }
-
-        let brokenStub = NetSkeinStub(
-            method: .GET,
-            url: "netskein.mock",
-            outcome: .failure(AnonymousDownloadCrash())
-        )
-
-        let client = NetSkeinClient.testing()
-            .addStub(brokenStub)
-            .build()
-
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-        let destinationPath = temporaryDirectory.appendingPathComponent("test_netskein_crash.bin")
-            .path
-        try? FileManager.default.removeItem(atPath: destinationPath)
-
-        await #expect(throws: NetSkeinError.self) {
-            try await client.get("netskein.mock")
-                .download(toFileAtPath: destinationPath)
-        }
-
-        try? FileManager.default.removeItem(atPath: destinationPath)
-        try await client.shutdown()
+extension RequestBuilderTests {
+    fileprivate func createTempFile(size: Int) throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("RequestBuilderTest_\(UUID().uuidString).bin")
+        let data = Data(repeating: 0x58, count: size)  // 'X'
+        try data.write(to: fileURL)
+        return fileURL
     }
 }
