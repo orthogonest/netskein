@@ -47,7 +47,7 @@ public final class NetSkeinClient<Client: HTTPClientProtocol>: Sendable {
 extension NetSkeinClient where Client == HTTPClient {
     public convenience init(
         defaultHeaders: HTTPHeaders = .init(),
-        retryPolicy: RetryPolicy = .standard()
+        retryPolicy: RetryPolicy = .disabled
     ) {
         let client = HTTPClient(eventLoopGroupProvider: .singleton, configuration: .init())
         self.init(
