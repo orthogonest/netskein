@@ -23,6 +23,7 @@ public final class NetSkeinClient<Client: HTTPClientProtocol>: Sendable {
     let underlyingClient: Client
     let defaultHeaders: HTTPHeaders
     let cookieJar: NetSkeinCookieJar?
+    let retryPolicy: RetryPolicy
     let logger: Logger
     let urlEncoder: NetSkeinURLEncoder
 
@@ -30,21 +31,30 @@ public final class NetSkeinClient<Client: HTTPClientProtocol>: Sendable {
         underlyingClient: Client,
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: NetSkeinCookieJar? = nil,
+        retryPolicy: RetryPolicy = .disabled,
         logger: Logger = Logger(label: Label.identifier),
         urlEncoder: NetSkeinURLEncoder = .default,
     ) {
         self.underlyingClient = underlyingClient
         self.defaultHeaders = defaultHeaders
         self.cookieJar = cookieJar
+        self.retryPolicy = retryPolicy
         self.logger = logger
         self.urlEncoder = urlEncoder
     }
 }
 
 extension NetSkeinClient where Client == HTTPClient {
-    public convenience init(defaultHeaders: HTTPHeaders = .init()) {
+    public convenience init(
+        defaultHeaders: HTTPHeaders = .init(),
+        retryPolicy: RetryPolicy = .standard()
+    ) {
         let client = HTTPClient(eventLoopGroupProvider: .singleton, configuration: .init())
-        self.init(underlyingClient: client, defaultHeaders: defaultHeaders)
+        self.init(
+            underlyingClient: client,
+            defaultHeaders: defaultHeaders,
+            retryPolicy: retryPolicy
+        )
     }
 
     public static func builder() -> NetSkeinClientBuilder {
@@ -114,6 +124,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var automaticDecompression: Bool
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit
     private var cookieJar: NetSkeinCookieJar?
+    private var retryPolicy: RetryPolicy
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool
     private var logger: Logger
@@ -127,6 +138,7 @@ public struct NetSkeinClientBuilder: Sendable {
         redirectPolicy = .default
         automaticDecompression = true
         decompressionLimit = .size(10 * 1024 * 1024)
+        retryPolicy = .disabled
         acceptInvalidCertificates = false
         logger = Logger(label: Label.identifier)
     }
@@ -208,6 +220,13 @@ extension NetSkeinClientBuilder {
     }
 
     @discardableResult
+    public func retryPolicy(_ policy: RetryPolicy) -> Self {
+        var copy = self
+        copy.retryPolicy = policy
+        return copy
+    }
+
+    @discardableResult
     public func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
         var copy = self
         copy.tlsConfiguration = configuration
@@ -262,6 +281,7 @@ extension NetSkeinClientBuilder {
             underlyingClient: client,
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
+            retryPolicy: retryPolicy,
             logger: logger
         )
     }

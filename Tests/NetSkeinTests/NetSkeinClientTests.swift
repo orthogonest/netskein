@@ -190,6 +190,7 @@ extension NetSkeinClientBuilderTests {
         let headers: HTTPHeaders = ["X-Builder-Assert": "True"]
         let customLogger = Logger(label: "test.logger")
         let customJar = NetSkeinCookieJar()
+        let retryPolicy = RetryPolicy.standard()
         let customTls = TLSConfiguration.makeClientConfiguration()
         let customProxy = NetSkeinProxy.http(host: "127.0.0.1", port: 3128)
 
@@ -204,6 +205,7 @@ extension NetSkeinClientBuilderTests {
             .automaticDecompression(false)
             .decompressionLimit(.size(1024))
             .cookieStore(customJar)
+            .retryPolicy(retryPolicy)
             .tlsConfiguration(customTls)
             .acceptInvalidCertificates(true)
             .logger(customLogger)
