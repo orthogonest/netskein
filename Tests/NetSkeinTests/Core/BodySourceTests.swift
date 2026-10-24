@@ -53,39 +53,32 @@ struct BodySourceTests {
         let tempURL = try createTempFile(size: Int(fileSize))
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        let tracker = ProgressTracker(targetBytes: fileSize)
+        // yield is synchronous, so events keep the exact order BodySource reports them
+        let (events, eventsContinuation) = AsyncStream.makeStream(
+            of: (sent: Int64, total: Int64).self
+        )
 
         let source = BodySource.file(
             path: tempURL.path,
             chunkSize: chunkSize,
             fileSize: fileSize,
             onProgress: { sent, total in
-                Task {
-                    await tracker.record(sent: sent, total: total)
-                }
+                eventsContinuation.yield((sent, total))
+                if sent >= fileSize { eventsContinuation.finish() }
             }
         )
 
         let body = try source.makeBody()
         #expect(body != nil)
 
-        // Wait until the background stream Task processes the file and emits progress
-        try await withThrowingTimeout(seconds: 3) {
-            await tracker.waitForCompletion()
+        let recordedEvents = try await withThrowingTimeout(seconds: 3) {
+            var collected: [(sent: Int64, total: Int64)] = []
+            for await event in events { collected.append(event) }
+            return collected
         }
 
-        let recordedEvents = await tracker.getRecords()
-        #expect(!recordedEvents.isEmpty)
-
-        // Verify incremental byte progress
-        let lastEvent = try #require(recordedEvents.last)
-        #expect(lastEvent.sent == fileSize)
-        #expect(lastEvent.total == fileSize)
-
-        // Verify chunk step counts (30, 60, 90, 100)
-        let expectedSentValues: [Int64] = [30, 60, 90, 100]
-        let actualSentValues = recordedEvents.map(\.sent)
-        #expect(actualSentValues == expectedSentValues)
+        #expect(recordedEvents.map(\.sent) == [30, 60, 90, 100])
+        #expect(recordedEvents.allSatisfy { $0.total == fileSize })
     }
 
     @Test("BodySourceTests: Verifies makeBody works when onProgress is nil")
@@ -124,7 +117,7 @@ struct BodySourceTests {
 // MARK: - Test Helpers
 
 extension BodySourceTests {
-    fileprivate func createTempFile(size: Int) throws -> URL {
+    private func createTempFile(size: Int) throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent("BodySourceTest_\(UUID().uuidString).bin")
         let data = Data(repeating: 0x42, count: size)  // 'B'
@@ -132,7 +125,7 @@ extension BodySourceTests {
         return fileURL
     }
 
-    fileprivate func withThrowingTimeout(
+    private func withThrowingTimeout(
         seconds: Double,
         operation: @escaping @Sendable () async throws -> Void
     ) async throws {
@@ -148,38 +141,22 @@ extension BodySourceTests {
             group.cancelAll()
         }
     }
+
+    private func withThrowingTimeout<T: Sendable>(
+        seconds: Double,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw TimeoutError()
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
 }
 
 private struct TimeoutError: Error {}
-
-/// Thread-safe actor to collect asynchronous upload progress events in tests
-private actor ProgressTracker {
-    private var records: [(sent: Int64, total: Int64)] = []
-    private var continuation: CheckedContinuation<Void, Never>?
-    private let targetBytes: Int64
-
-    init(targetBytes: Int64) {
-        self.targetBytes = targetBytes
-    }
-
-    func record(sent: Int64, total: Int64) {
-        records.append((sent, total))
-        if sent >= targetBytes {
-            continuation?.resume()
-            continuation = nil
-        }
-    }
-
-    func waitForCompletion() async {
-        if let last = records.last, last.sent >= targetBytes {
-            return
-        }
-        await withCheckedContinuation { continuation in
-            self.continuation = continuation
-        }
-    }
-
-    func getRecords() -> [(sent: Int64, total: Int64)] {
-        records
-    }
-}
