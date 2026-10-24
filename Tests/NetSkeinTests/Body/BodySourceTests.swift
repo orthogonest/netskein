@@ -152,8 +152,10 @@ extension BodySourceTests {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 throw TimeoutError()
             }
-            let result = try await group.next()!
-            group.cancelAll()
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw TimeoutError()
+            }
             return result
         }
     }
