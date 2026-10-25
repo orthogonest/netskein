@@ -275,9 +275,9 @@ extension NetSkeinRequestTests {
     }
 
     @Test(
-        "NetSkeinRequestTests: Verifies stream payload sets chunked headers and creates streaming body"
+        "NetSkeinRequestTests: Verifies file payload sets octet-stream content type and leaves framing to the transport"
     )
-    func testStreamBodyTransitionSuccess() async throws {
+    func testFileBodyTransitionSuccess() async throws {
         let tempURL = try createTempFile(size: 64)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
@@ -287,7 +287,6 @@ extension NetSkeinRequestTests {
             method: .POST,
             url: "https://api.example.com/stream-upload",
             requestValidator: { request in
-                #expect(request.headers.first(name: "Transfer-Encoding") == "chunked")
                 #expect(request.headers.first(name: "Content-Type") == "application/octet-stream")
                 #expect(request.body != nil)
                 isStreamValidated.withLockedValue { $0 = true }
@@ -361,6 +360,76 @@ extension NetSkeinRequestTests {
             Issue.record("Expected stream() to throw .ioFailure for unreadable file")
         } catch {
             #expect(error.kind == .ioFailure)
+        }
+    }
+
+    @Test("NetSkeinRequestTests: Verifies file accepts a symlink to a regular file")
+    func testFileBodyAcceptsSymlink() throws {
+        let targetURL = try createTempFile(size: 64)
+        let linkURL = targetURL.deletingLastPathComponent()
+            .appendingPathComponent("upload_link_\(UUID().uuidString).bin")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: targetURL)
+        defer {
+            try? FileManager.default.removeItem(at: linkURL)
+            try? FileManager.default.removeItem(at: targetURL)
+        }
+
+        let client = NetSkeinClient.testing().build()
+
+        #expect(throws: Never.self) {
+            try client.post("https://api.example.com/upload").file(atPath: linkURL.path)
+        }
+    }
+
+    @Test("NetSkeinRequestTests: Verifies file throws ioFailure when the path is a directory")
+    func testFileBodyRejectsDirectory() {
+        let client = NetSkeinClient.testing().build()
+
+        do {
+            _ = try client.post("https://api.example.com/upload")
+                .file(atPath: FileManager.default.temporaryDirectory.path)
+            Issue.record("Expected file(atPath:) to throw .ioFailure for a directory")
+        } catch {
+            #expect(error.kind == .ioFailure)
+            #expect(error.errorDescription?.contains("No regular file exists") == true)
+        }
+    }
+
+    @Test("NetSkeinRequestTests: Verifies file rejects a named pipe instead of blocking on open")
+    func testFileBodyRejectsFIFO() throws {
+        let fifoPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("upload_fifo_\(UUID().uuidString)").path
+        try #require(mkfifo(fifoPath, 0o644) == 0)
+        defer { unlink(fifoPath) }
+
+        try expectNoRegularFile(atPath: fifoPath)
+    }
+
+    @Test("NetSkeinRequestTests: Verifies file rejects a character device")
+    func testFileBodyRejectsDevice() throws {
+        try expectNoRegularFile(atPath: "/dev/null")
+    }
+
+    @Test("NetSkeinRequestTests: Verifies file rejects a symlink whose target does not exist")
+    func testFileBodyRejectsBrokenSymlink() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let linkURL = tempDir.appendingPathComponent("broken_link_\(UUID().uuidString).bin")
+        let missingTarget = tempDir.appendingPathComponent("missing_\(UUID().uuidString).bin")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: missingTarget)
+        defer { try? FileManager.default.removeItem(at: linkURL) }
+
+        try expectNoRegularFile(atPath: linkURL.path)
+    }
+
+    private func expectNoRegularFile(atPath path: String) throws {
+        let client = NetSkeinClient.testing().build()
+
+        do {
+            _ = try client.post("https://api.example.com/upload").file(atPath: path)
+            Issue.record("Expected file(atPath:) to throw .ioFailure for \(path)")
+        } catch {
+            #expect(error.kind == .ioFailure)
+            #expect(error.errorDescription?.contains("No regular file exists") == true)
         }
     }
 }

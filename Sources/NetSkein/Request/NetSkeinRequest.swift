@@ -214,13 +214,17 @@ extension NetSkeinRequest where Body == BodyAllowed {
         chunkSize: Int = 64 * 1024,
         onProgress: UploadProgress? = nil
     ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+        // Resolve symlinks first: attributesOfItem describes a link itself, not its target.
+        // Requiring a regular file rejects directories, FIFOs (which block on open), devices,
+        // sockets and broken links before the request is sent.
+        let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         guard
-            let fileAttributes = try? FileManager.default.attributesOfItem(atPath: path),
-            let fileSize = fileAttributes[.size] as? Int64
+            let attributes = try? FileManager.default.attributesOfItem(atPath: resolvedPath),
+            attributes[.type] as? FileAttributeType == .typeRegular
         else {
             throw .custom(
                 kind: .ioFailure,
-                message: "Failed to retrieve file attributes or file size at path: \(path)",
+                message: "No regular file exists at path: \(path)",
             )
         }
 
@@ -235,10 +239,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
         copy.body = .file(
             path: path,
             chunkSize: chunkSize,
-            fileSize: fileSize,
             onProgress: onProgress
         )
-        copy.headers.replaceOrAdd(name: "Transfer-Encoding", value: "chunked")
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
 
         return NetSkeinRequest<Transport, BodyAttached>(
