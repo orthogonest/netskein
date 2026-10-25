@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Foundation
+import NIOConcurrencyHelpers
 import NIOCore
 import Testing
 
@@ -30,7 +31,6 @@ struct BodySourceTests {
         let source = BodySource.file(
             path: nonExistentPath,
             chunkSize: 1024,
-            fileSize: 100,
             onProgress: nil
         )
 
@@ -46,39 +46,25 @@ struct BodySourceTests {
         }
     }
 
-    @Test("BodySourceTests: Verifies makeBody reads multiple chunks and reports upload progress")
-    func testMakeBodyFileStreamingWithProgress() async throws {
-        let fileSize: Int64 = 100
-        let chunkSize = 30  // Will produce 4 chunks: 30, 30, 30, 10 bytes
-        let tempURL = try createTempFile(size: Int(fileSize))
+    @Test("BodySourceTests: Verifies makeBody does not read the file or report progress eagerly")
+    func testMakeBodyFileIsLazy() throws {
+        let tempURL = try createTempFile(size: 100)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        // yield is synchronous, so events keep the exact order BodySource reports them
-        let (events, eventsContinuation) = AsyncStream.makeStream(
-            of: (sent: Int64, total: Int64).self
-        )
-
+        let progressEvents = NIOLockedValueBox<[Int64]>([])
         let source = BodySource.file(
             path: tempURL.path,
-            chunkSize: chunkSize,
-            fileSize: fileSize,
-            onProgress: { sent, total in
-                eventsContinuation.yield((sent, total))
-                if sent >= fileSize { eventsContinuation.finish() }
+            chunkSize: 30,
+            onProgress: { sent, _ in
+                progressEvents.withLockedValue { $0.append(sent) }
             }
         )
 
         let body = try source.makeBody()
+
+        // Chunks are read only when the transport pulls them (see FileChunkSequenceTests)
         #expect(body != nil)
-
-        let recordedEvents = try await withThrowingTimeout(seconds: 3) {
-            var collected: [(sent: Int64, total: Int64)] = []
-            for await event in events { collected.append(event) }
-            return collected
-        }
-
-        #expect(recordedEvents.map(\.sent) == [30, 60, 90, 100])
-        #expect(recordedEvents.allSatisfy { $0.total == fileSize })
+        #expect(progressEvents.withLockedValue { $0 }.isEmpty)
     }
 
     @Test("BodySourceTests: Verifies makeBody works when onProgress is nil")
@@ -89,7 +75,6 @@ struct BodySourceTests {
         let source = BodySource.file(
             path: tempURL.path,
             chunkSize: 32,
-            fileSize: 64,
             onProgress: nil  // Explicit nil branch
         )
 
@@ -105,7 +90,6 @@ struct BodySourceTests {
         let source = BodySource.file(
             path: tempURL.path,
             chunkSize: 1024,
-            fileSize: 0,
             onProgress: nil
         )
 
@@ -124,41 +108,4 @@ extension BodySourceTests {
         try data.write(to: fileURL)
         return fileURL
     }
-
-    private func withThrowingTimeout(
-        seconds: Double,
-        operation: @escaping @Sendable () async throws -> Void
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw TimeoutError()
-            }
-            try await group.next()
-            group.cancelAll()
-        }
-    }
-
-    private func withThrowingTimeout<T: Sendable>(
-        seconds: Double,
-        operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw TimeoutError()
-            }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else {
-                throw TimeoutError()
-            }
-            return result
-        }
-    }
 }
-
-private struct TimeoutError: Error {}

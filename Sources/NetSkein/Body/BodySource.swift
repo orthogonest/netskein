@@ -10,7 +10,7 @@ import NIOCore
 enum BodySource: Sendable {
     case none
     case bytes(ByteBuffer)
-    case file(path: String, chunkSize: Int, fileSize: Int64, onProgress: UploadProgress?)
+    case file(path: String, chunkSize: Int, onProgress: UploadProgress?)
 }
 
 extension BodySource {
@@ -22,41 +22,15 @@ extension BodySource {
         case let .bytes(buffer):
             return .bytes(buffer)
 
-        case let .file(path, chunkSize, fileSize, onProgress):
-            guard let fileHandle = FileHandle(forReadingAtPath: path) else {
-                throw .custom(kind: .ioFailure, message: "Unable to open file at path: \(path)")
-            }
+        case let .file(path, chunkSize, onProgress):
+            // Opened per attempt, so Content-Length always matches the bytes actually streamed
+            let chunks = try FileChunkSequence(
+                path: path,
+                chunkSize: chunkSize,
+                onProgress: onProgress
+            )
 
-            let stream = AsyncStream<ByteBuffer> { continuation in
-                continuation.onTermination = { _ in
-                    try? fileHandle.close()
-                }
-
-                Task {
-                    var sentBytes: Int64 = 0
-                    do {
-                        while true {
-                            guard
-                                let data = try fileHandle.read(upToCount: chunkSize),
-                                !data.isEmpty
-                            else {
-                                continuation.finish()
-                                break
-                            }
-                            let allocator = ByteBufferAllocator()
-                            var buffer = allocator.buffer(capacity: data.count)
-                            buffer.writeBytes(data)
-                            continuation.yield(buffer)
-                            sentBytes += Int64(data.count)
-                            onProgress?(sentBytes, fileSize)
-                        }
-                    } catch {
-                        continuation.finish()
-                    }
-                }
-            }
-
-            return .stream(stream, length: .known(fileSize))
+            return .stream(chunks, length: .known(chunks.fileSize))
         }
     }
 }
