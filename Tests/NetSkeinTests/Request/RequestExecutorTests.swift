@@ -1354,9 +1354,8 @@ private struct StreamingHTTPClient: HTTPTransport {
     func shutdown() async throws {}
 }
 
-// MARK: - Body Draining Transport
+// MARK: - Spanning Transport
 
-/// Reads every request body to the end, recording how many bytes each request carried.
 /// Creates a span per request with the client's tracer, the way AsyncHTTPClient does.
 private final class SpanningTransport: HTTPTransport {
     private let tracer: InMemoryTracer
@@ -1378,6 +1377,9 @@ private final class SpanningTransport: HTTPTransport {
     func shutdown() async throws {}
 }
 
+// MARK: - Body Draining Transport
+
+/// Reads every request body to the end, recording how many bytes each request carried.
 private final class BodyDrainingTransport: HTTPTransport {
     private let bodySizes = NIOLockedValueBox<[Int]>([])
 
