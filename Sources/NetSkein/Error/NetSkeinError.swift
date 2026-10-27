@@ -15,6 +15,7 @@ public struct NetSkeinError: Error, Sendable {
         case serverError
         case emptyResponseBody
         case ioFailure
+        case middlewareFailure
     }
 
     private enum Representation: Sendable {
@@ -105,6 +106,8 @@ extension NetSkeinError: LocalizedError {
                     "The server responded successfully, but the response body was unexpectedly empty."
             case .ioFailure:
                 return "A local filesystem or storage input/output error occurred."
+            case .middlewareFailure:
+                return "A middleware failed while handling the request."
             }
         case let .custom(_, data):
             return data.message
@@ -132,6 +135,9 @@ extension NetSkeinError: LocalizedError {
             case .ioFailure:
                 return
                     "The local disk storage was unable to allocate a secure file handle read/write session, or the designated path resource is absent."
+            case .middlewareFailure:
+                return
+                    "A registered middleware threw an error of its own, such as failing to obtain credentials, before a response could be produced."
             }
         case let .custom(_, data):
             return data.underlyingError?.localizedDescription

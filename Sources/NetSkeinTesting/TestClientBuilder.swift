@@ -1,3 +1,4 @@
+import AsyncHTTPClient
 import Logging
 import NIOHTTP1
 import NetSkein
@@ -6,6 +7,7 @@ public struct TestClientBuilder: Sendable {
     private var defaultHeaders: HTTPHeaders
     private var cookieJar: CookieJar?
     private var retryPolicy: RetryPolicy
+    private var middlewares: [any HTTPMiddleware]
     private var logger: Logger
     private var stubs: [HTTPStub]
     private var onShutdown: (@Sendable () async throws -> Void)?
@@ -14,6 +16,7 @@ public struct TestClientBuilder: Sendable {
         self.stubs = []
         defaultHeaders = HTTPHeaders()
         retryPolicy = .standard()
+        middlewares = []
         logger = Logger(label: LoggerLabel.test)
     }
 }
@@ -38,6 +41,22 @@ extension TestClientBuilder {
         var copy = self
         copy.retryPolicy = policy
         return copy
+    }
+
+    @discardableResult
+    public func using(_ middleware: some HTTPMiddleware) -> Self {
+        var copy = self
+        copy.middlewares.append(middleware)
+        return copy
+    }
+
+    @discardableResult
+    public func using(
+        _ intercept:
+            @escaping @Sendable (RequestHead, MiddlewareContext, HTTPMiddleware.Next)
+            async throws -> HTTPClientResponse
+    ) -> Self {
+        using(ClosureMiddleware(intercept))
     }
 
     @discardableResult
@@ -77,6 +96,7 @@ extension TestClientBuilder {
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
             retryPolicy: retryPolicy,
+            middlewares: middlewares,
             logger: logger
         )
     }

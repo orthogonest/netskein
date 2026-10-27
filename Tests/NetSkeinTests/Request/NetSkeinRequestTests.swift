@@ -531,6 +531,75 @@ extension NetSkeinRequestTests {
     }
 }
 
+// MARK: - Middleware
+
+extension NetSkeinRequestTests {
+    @Test(
+        "NetSkeinRequestTests: Verifies client middleware wraps request middleware, which runs in order"
+    )
+    func testMiddlewareOrdering() async throws {
+        let events = NIOLockedValueBox<[String]>([])
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/ordered",
+            requestValidator: { _ in events.withLockedValue { $0.append("transport") } },
+            outcome: .response(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing()
+            .addStub(stub)
+            .using(EventMiddleware(name: "client", events: events))
+            .build()
+
+        _ = try await client.get("https://api.example.com/ordered")
+            .using(EventMiddleware(name: "request-1", events: events))
+            .using { request, _, next in
+                events.withLockedValue { $0.append("request-2") }
+                return try await next(request)
+            }
+            .send()
+
+        #expect(events.withLockedValue { $0 } == ["client", "request-1", "request-2", "transport"])
+    }
+
+    @Test("NetSkeinRequestTests: Verifies request middleware survives a body transition")
+    func testMiddlewareSurvivesBodyTransition() async throws {
+        let stub = HTTPStub(
+            method: .POST,
+            url: "https://api.example.com/with-body",
+            requestValidator: { request in
+                #expect(request.headers.first(name: "X-Signed") == "true")
+            },
+            outcome: .response(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let response = try await client.post("https://api.example.com/with-body")
+            .using { request, _, next in
+                var request = request
+                request.headers.replaceOrAdd(name: "X-Signed", value: "true")
+                return try await next(request)
+            }
+            .json(["name": "report"])
+            .send()
+
+        #expect(response.status == .ok)
+    }
+}
+
+private struct EventMiddleware: HTTPMiddleware {
+    let name: String
+    let events: NIOLockedValueBox<[String]>
+
+    func intercept(
+        _ request: RequestHead,
+        context: MiddlewareContext,
+        next: Next
+    ) async throws -> HTTPClientResponse {
+        events.withLockedValue { $0.append(name) }
+        return try await next(request)
+    }
+}
+
 // MARK: - Test Helpers
 
 extension NetSkeinRequestTests {

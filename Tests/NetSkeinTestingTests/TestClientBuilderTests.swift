@@ -138,3 +138,17 @@ struct TestClientBuilderTests {
         #expect(validationResult == true)
     }
 }
+
+// MARK: - Middleware Registration
+
+extension TestClientBuilderTests {
+    @Test("TestClientBuilderTests: Verify using appends type and closure middleware to the client")
+    func usingAppendsMiddleware() {
+        let client = NetSkeinClient.testing()
+            .using(ClosureMiddleware { request, _, next in try await next(request) })
+            .using { request, _, next in try await next(request) }
+            .build()
+
+        #expect(client.middlewares.count == 2)
+    }
+}

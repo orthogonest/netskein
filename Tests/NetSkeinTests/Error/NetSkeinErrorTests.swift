@@ -5,10 +5,6 @@ import Testing
 
 @testable import NetSkein
 
-struct MockUnderlyingError: Error, LocalizedError, Sendable {
-    var errorDescription: String? { "Root cause of failure." }
-}
-
 struct NetSkeinErrorTests {
     @Test(
         "NetSkeinErrorTests: Verifies simple factory accurately retains kind properties and triggers default localizations"
@@ -142,4 +138,20 @@ struct NetSkeinErrorTests {
         #expect(ioFail.errorDescription?.contains("input/output error occurred.") == true)
         #expect(ioFail.failureReason?.contains("secure file handle") == true)
     }
+}
+
+// MARK: - Middleware Failure
+
+extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies middlewareFailure has its own default descriptions")
+    func testMiddlewareFailureLocalization() {
+        let error = NetSkeinError.simple(.middlewareFailure)
+
+        #expect(error.errorDescription == "A middleware failed while handling the request.")
+        #expect(error.failureReason?.contains("A registered middleware threw an error") == true)
+    }
+}
+
+struct MockUnderlyingError: Error, LocalizedError, Sendable {
+    var errorDescription: String? { "Root cause of failure." }
 }

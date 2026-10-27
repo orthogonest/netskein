@@ -18,6 +18,7 @@ struct RequestExecutor<Transport: HTTPTransport>: Sendable {
     let timeout: TimeAmount?
     let retryPolicy: RetryPolicy?
     let maxResponseBytes: Int
+    let middlewares: [any HTTPMiddleware]
 }
 
 extension RequestExecutor {
@@ -65,7 +66,7 @@ extension RequestExecutor {
     private func prepareRequest(
         attempt: Int,
         headerModifier: ((inout HTTPHeaders) -> Void)? = nil
-    ) throws(NetSkeinError) -> (request: HTTPClientRequest, requestID: String) {
+    ) -> (head: RequestHead, requestID: String) {
         var activeHeaders = headers
 
         let requestID = UUID().uuidString
@@ -77,12 +78,9 @@ extension RequestExecutor {
 
         headerModifier?(&activeHeaders)
 
-        var request = HTTPClientRequest(url: url)
-        request.method = method
-        request.headers = activeHeaders
-        request.body = try body.makeBody()
+        let head = RequestHead(method: method, url: url, headers: activeHeaders)
 
-        return (request, requestID)
+        return (head, requestID)
     }
 
     private func prepareLogger(
@@ -100,6 +98,42 @@ extension RequestExecutor {
 
         logger.info(attempt == 0 ? "Initiating \(action)" : "Retrying \(action)")
         return logger
+    }
+
+    private func execute(
+        _ head: RequestHead,
+        requestID: String,
+        attempt: Int,
+        action: String,
+        logger: Logger
+    ) async throws -> HTTPClientResponse {
+        let context = MiddlewareContext(
+            attempt: attempt,
+            requestID: requestID,
+            logger: logger,
+            body: body.bodyDescription
+        )
+
+        return try await MiddlewareChain.run(
+            head,
+            through: middlewares,
+            context: context
+        ) { head in
+            var request = HTTPClientRequest(url: head.url)
+            request.method = head.method
+            request.headers = head.headers
+            request.body = try body.makeBody()
+
+            do {
+                return try await client.transport.execute(
+                    request,
+                    timeout: timeout ?? .seconds(30),
+                    logger: logger
+                )
+            } catch {
+                throw mapError(error, requestID: requestID, action: action, logger: logger)
+            }
+        }
     }
 
     private func recordResponse(
@@ -326,7 +360,7 @@ extension RequestExecutor {
 // MARK: Buffered Execution
 
 extension RequestExecutor {
-    func execute() async throws(NetSkeinError) -> NetSkeinResponse {
+    func send() async throws(NetSkeinError) -> NetSkeinResponse {
         var attempt = 0
         var outcome: Result<NetSkeinResponse, NetSkeinError>
         var shouldRetry: Bool
@@ -334,7 +368,7 @@ extension RequestExecutor {
         repeat {
             try checkCancellation()
 
-            let (request, requestID) = try prepareRequest(attempt: attempt)
+            let (head, requestID) = prepareRequest(attempt: attempt)
             let logger = prepareLogger(
                 requestID: requestID,
                 attempt: attempt,
@@ -345,9 +379,11 @@ extension RequestExecutor {
             var rawResponse: HTTPClientResponse?
 
             do {
-                let response = try await client.transport.execute(
-                    request,
-                    timeout: timeout ?? .seconds(30),
+                let response = try await execute(
+                    head,
+                    requestID: requestID,
+                    attempt: attempt,
+                    action: "Network request",
                     logger: logger
                 )
                 rawResponse = response
@@ -394,8 +430,8 @@ extension RequestExecutor {
 // MARK: - Streaming Execution
 
 extension RequestExecutor {
-    func execute(
-        stream onChunk: ChunkHandler
+    func stream(
+        _ onChunk: ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
         var attempt = 0
         var outcome: Result<(status: HTTPResponseStatus, headers: HTTPHeaders), NetSkeinError>
@@ -404,7 +440,7 @@ extension RequestExecutor {
         repeat {
             try checkCancellation()
 
-            let (request, requestID) = try prepareRequest(attempt: attempt)
+            let (head, requestID) = prepareRequest(attempt: attempt)
             let logger = prepareLogger(
                 requestID: requestID,
                 attempt: attempt,
@@ -415,9 +451,11 @@ extension RequestExecutor {
             var rawResponse: HTTPClientResponse?
 
             do {
-                let response = try await client.transport.execute(
-                    request,
-                    timeout: timeout ?? .seconds(30),
+                let response = try await execute(
+                    head,
+                    requestID: requestID,
+                    attempt: attempt,
+                    action: "Streaming request",
                     logger: logger
                 )
                 rawResponse = response
@@ -479,8 +517,8 @@ extension RequestExecutor {
 // MARK: - File Download Execution
 
 extension RequestExecutor {
-    func execute(
-        downloadTo path: String,
+    func download(
+        to path: String,
         resumption: DownloadResumption = .disabled,
         onProgress: DownloadProgress? = nil
     ) async throws(NetSkeinError) {
@@ -512,7 +550,7 @@ extension RequestExecutor {
             // Inject Range & If-Range headers only when applicable (GET requests with existing bytes)
             let isResuming = existingBytes > 0 && method == .GET
 
-            let (request, requestID) = try prepareRequest(attempt: attempt) { reqHeaders in
+            let (head, requestID) = prepareRequest(attempt: attempt) { reqHeaders in
                 if isResuming {
                     reqHeaders.replaceOrAdd(name: "Range", value: "bytes=\(existingBytes)-")
                     if let activeValidator {
@@ -533,9 +571,11 @@ extension RequestExecutor {
             var rawResponse: HTTPClientResponse?
 
             do {
-                let response = try await client.transport.execute(
-                    request,
-                    timeout: timeout ?? .seconds(30),
+                let response = try await execute(
+                    head,
+                    requestID: requestID,
+                    attempt: attempt,
+                    action: "Streaming download",
                     logger: logger
                 )
                 rawResponse = response
