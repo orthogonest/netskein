@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Logging
 import NIOHTTP1
+import Tracing
 
 public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
     let transport: Transport
@@ -8,6 +9,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
     let cookieJar: CookieJar?
     let retryPolicy: RetryPolicy
     let middlewares: [any HTTPMiddleware]
+    let tracer: (any Tracer)?
     let logger: Logger
     let percentEncoder: PercentEncoder
 
@@ -17,6 +19,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
         cookieJar: CookieJar? = nil,
         retryPolicy: RetryPolicy = .disabled,
         middlewares: [any HTTPMiddleware] = [],
+        tracer: (any Tracer)? = InstrumentationSystem.tracer,
         logger: Logger,
         percentEncoder: PercentEncoder = .default,
     ) {
@@ -25,6 +28,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
         self.cookieJar = cookieJar
         self.retryPolicy = retryPolicy
         self.middlewares = middlewares
+        self.tracer = tracer
         self.logger = logger
         self.percentEncoder = percentEncoder
     }

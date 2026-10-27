@@ -14,6 +14,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.26.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.30.0"),
+        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.3.0"),
     ],
     targets: [
         .target(
@@ -26,6 +27,7 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOHTTPCompression", package: "swift-nio-extras"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
+                .product(name: "Tracing", package: "swift-distributed-tracing"),
             ],
             path: "Sources/NetSkein",
         ),
@@ -38,17 +40,26 @@ let package = Package(
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "Tracing", package: "swift-distributed-tracing"),
             ],
             path: "Sources/NetSkeinTesting",
         ),
         .testTarget(
             name: "NetSkeinTests",
-            dependencies: ["NetSkein", "NetSkeinTesting"],
+            dependencies: [
+                "NetSkein",
+                "NetSkeinTesting",
+                .product(name: "InMemoryTracing", package: "swift-distributed-tracing"),
+            ],
             path: "Tests/NetSkeinTests",
         ),
         .testTarget(
             name: "NetSkeinTestingTests",
-            dependencies: ["NetSkein", "NetSkeinTesting"],
+            dependencies: [
+                "NetSkein",
+                "NetSkeinTesting",
+                .product(name: "InMemoryTracing", package: "swift-distributed-tracing"),
+            ],
             path: "Tests/NetSkeinTestingTests",
         ),
     ]
