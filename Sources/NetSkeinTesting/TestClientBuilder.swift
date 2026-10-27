@@ -2,12 +2,14 @@ import AsyncHTTPClient
 import Logging
 import NIOHTTP1
 import NetSkein
+import Tracing
 
 public struct TestClientBuilder: Sendable {
     private var defaultHeaders: HTTPHeaders
     private var cookieJar: CookieJar?
     private var retryPolicy: RetryPolicy
     private var middlewares: [any HTTPMiddleware]
+    private var tracer: (any Tracer)?
     private var logger: Logger
     private var stubs: [HTTPStub]
     private var onShutdown: (@Sendable () async throws -> Void)?
@@ -17,6 +19,7 @@ public struct TestClientBuilder: Sendable {
         defaultHeaders = HTTPHeaders()
         retryPolicy = .standard()
         middlewares = []
+        tracer = InstrumentationSystem.tracer
         logger = Logger(label: LoggerLabel.test)
     }
 }
@@ -59,6 +62,21 @@ extension TestClientBuilder {
         using(ClosureMiddleware(intercept))
     }
 
+    /// Records request spans in `tracer`, for example an `InMemoryTracer` that tests can inspect.
+    @discardableResult
+    public func tracer(_ tracer: any Tracer) -> Self {
+        var copy = self
+        copy.tracer = tracer
+        return copy
+    }
+
+    @discardableResult
+    public func disableTracing() -> Self {
+        var copy = self
+        copy.tracer = nil
+        return copy
+    }
+
     @discardableResult
     public func logger(_ logger: Logger) -> Self {
         var copy = self
@@ -97,6 +115,7 @@ extension TestClientBuilder {
             cookieJar: cookieJar,
             retryPolicy: retryPolicy,
             middlewares: middlewares,
+            tracer: tracer,
             logger: logger
         )
     }

@@ -1,10 +1,12 @@
 import AsyncHTTPClient
 import Foundation
+import InMemoryTracing
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
 import Testing
+import Tracing
 
 @testable import NetSkein
 @testable import NetSkeinTesting
@@ -1139,6 +1141,136 @@ extension RequestExecutorTests {
     }
 }
 
+// MARK: - Tracing
+
+extension RequestExecutorTests {
+    @Test("RequestExecutorTests: Verifies all retry attempts of a call are recorded in one span")
+    func testTracingGroupsRetriesInOneSpan() async throws {
+        let sentID = NIOLockedValueBox<String?>(nil)
+        let stubs = [HTTPResponseStatus.serviceUnavailable, .ok]
+            .map { status in
+                HTTPStub(
+                    method: .GET,
+                    url: "https://api.example.com/traced",
+                    requestValidator: { request in
+                        sentID.withLockedValue { $0 = request.headers.first(name: "X-Request-ID") }
+                    },
+                    outcome: .response(status: status, headers: [:])
+                )
+            }
+        let tracer = InMemoryTracer()
+        let client = NetSkeinClient.testing().tracer(tracer).addStubs(stubs).build()
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/traced",
+            retryPolicy: .standard(maxRetries: 1, backoff: .immediate)
+        )
+
+        _ = try await executor.send()
+
+        let spans = tracer.finishedSpans
+        let span = try #require(spans.first)
+        #expect(spans.count == 1)
+        #expect(span.operationName == "NetSkein GET")
+        #expect(span.kind == .internal)
+        #expect(span.attributes.get("http.request.method") == .string("GET"))
+        #expect(span.attributes.get("netskein.operation") == .string("send"))
+        #expect(span.attributes.get("http.request.resend_count") == .int64(1))
+        #expect(span.attributes.get("http.response.status_code") == .int64(200))
+        #expect(
+            span.attributes.get("netskein.request_id")
+                == sentID.withLockedValue { $0 }.map { .string($0) }
+        )
+        #expect(span.errors.isEmpty)
+        #expect(span.status == nil)
+    }
+
+    @Test("RequestExecutorTests: Verifies transport spans are created as children of the call span")
+    func testTracingParentsTransportSpans() async throws {
+        let tracer = InMemoryTracer()
+        let client = NetSkeinClient(
+            transport: SpanningTransport(tracer: tracer),
+            tracer: tracer,
+            logger: Logger(label: LoggerLabel.test)
+        )
+        let executor = makeExecutor(client: client, url: "https://api.example.com/traced")
+
+        _ = try await executor.send()
+
+        let spans = tracer.finishedSpans
+        let callSpan = try #require(spans.first { $0.operationName == "NetSkein GET" })
+        let transportSpan = try #require(spans.first { $0.operationName == "GET" })
+        #expect(transportSpan.parentSpanID == callSpan.spanID)
+        #expect(transportSpan.traceID == callSpan.traceID)
+    }
+
+    @Test("RequestExecutorTests: Verifies a failed call records the error on its span")
+    func testTracingRecordsFailure() async {
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/traced",
+            outcome: .error(MockStubOutageError())
+        )
+        let tracer = InMemoryTracer()
+        let client = NetSkeinClient.testing().tracer(tracer).addStub(stub).build()
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/traced",
+            retryPolicy: .disabled
+        )
+
+        await #expect(throws: NetSkeinError.self) { _ = try await executor.send() }
+
+        let span = tracer.finishedSpans.first
+        #expect(span?.errors.count == 1)
+        #expect(span?.status?.code == .error)
+        #expect(span?.attributes.get("http.response.status_code") == nil)
+    }
+
+    @Test("RequestExecutorTests: Verifies streaming and download calls are traced")
+    func testTracingStreamAndDownload() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_tracing_download_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/traced",
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "data"))
+        )
+        let tracer = InMemoryTracer()
+        let client = NetSkeinClient.testing().tracer(tracer).addStub(stub).build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/traced")
+
+        _ = try await executor.stream { _, _, _ in }
+        try await executor.download(to: tempURL.path)
+
+        let spans = tracer.finishedSpans
+        #expect(
+            spans.map { $0.attributes.get("netskein.operation") } == [
+                .string("stream"), .string("download"),
+            ]
+        )
+        #expect(spans.allSatisfy { $0.attributes.get("http.response.status_code") == .int64(200) })
+    }
+
+    @Test("RequestExecutorTests: Verifies requests still succeed when tracing is disabled")
+    func testTracingDisabled() async throws {
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/untraced",
+            outcome: .response(status: .ok, headers: [:])
+        )
+        let client = NetSkeinClient.testing().disableTracing().addStub(stub).build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/untraced")
+
+        let response = try await executor.send()
+
+        #expect(client.tracer == nil)
+        #expect(response.status == .ok)
+    }
+}
+
 // MARK: - Test Factory Helpers
 
 extension RequestExecutorTests {
@@ -1225,6 +1357,27 @@ private struct StreamingHTTPClient: HTTPTransport {
 // MARK: - Body Draining Transport
 
 /// Reads every request body to the end, recording how many bytes each request carried.
+/// Creates a span per request with the client's tracer, the way AsyncHTTPClient does.
+private final class SpanningTransport: HTTPTransport {
+    private let tracer: InMemoryTracer
+
+    init(tracer: InMemoryTracer) {
+        self.tracer = tracer
+    }
+
+    func execute(
+        _ request: HTTPClientRequest,
+        timeout: TimeAmount,
+        logger: Logger?
+    ) async throws -> HTTPClientResponse {
+        let span = tracer.startSpan(request.method.rawValue, ofKind: .client)
+        span.end()
+        return HTTPClientResponse(status: .ok)
+    }
+
+    func shutdown() async throws {}
+}
+
 private final class BodyDrainingTransport: HTTPTransport {
     private let bodySizes = NIOLockedValueBox<[Int]>([])
 

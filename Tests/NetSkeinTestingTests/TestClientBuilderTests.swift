@@ -1,8 +1,10 @@
 import AsyncHTTPClient
+import InMemoryTracing
 import Logging
 import NIOConcurrencyHelpers
 import NIOHTTP1
 import Testing
+import Tracing
 
 @testable import NetSkein
 @testable import NetSkeinTesting
@@ -150,5 +152,24 @@ extension TestClientBuilderTests {
             .build()
 
         #expect(client.middlewares.count == 2)
+    }
+}
+
+// MARK: - Tracing
+
+extension TestClientBuilderTests {
+    @Test("TestClientBuilderTests: Verify the client uses the global tracer by default")
+    func tracerDefaultsToGlobal() {
+        #expect(NetSkeinClient.testing().build().tracer is NoOpTracer)
+    }
+
+    @Test("TestClientBuilderTests: Verify a custom tracer is passed to the client")
+    func customTracer() {
+        #expect(NetSkeinClient.testing().tracer(InMemoryTracer()).build().tracer is InMemoryTracer)
+    }
+
+    @Test("TestClientBuilderTests: Verify disabling tracing removes the tracer")
+    func disableTracing() {
+        #expect(NetSkeinClient.testing().disableTracing().build().tracer == nil)
     }
 }

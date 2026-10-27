@@ -142,6 +142,7 @@ extension NetSkeinClientBuilderTests {
         let client = NetSkeinClient.builder().build()
 
         #expect(client.transport.tracer is NoOpTracer)
+        #expect(client.tracer is NoOpTracer)
 
         try await client.shutdown()
     }
@@ -151,6 +152,7 @@ extension NetSkeinClientBuilderTests {
         let client = NetSkeinClient.builder().tracer(InMemoryTracer()).build()
 
         #expect(client.transport.tracer is InMemoryTracer)
+        #expect(client.tracer is InMemoryTracer)
 
         try await client.shutdown()
     }
@@ -160,6 +162,7 @@ extension NetSkeinClientBuilderTests {
         let client = NetSkeinClient.builder().disableTracing().build()
 
         #expect(client.transport.tracer == nil)
+        #expect(client.tracer == nil)
 
         try await client.shutdown()
     }

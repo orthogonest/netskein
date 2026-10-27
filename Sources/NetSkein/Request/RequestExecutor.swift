@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Logging
 import NIOCore
 import NIOHTTP1
+import Tracing
 
 #if canImport(FoundationEssentials)
     import FoundationEssentials
@@ -102,8 +103,14 @@ extension RequestExecutor {
         requestID: String,
         attempt: Int,
         action: String,
-        logger: Logger
+        logger: Logger,
+        span: (any Span)?
     ) async throws -> HTTPClientResponse {
+        span?.attributes["netskein.request_id"] = requestID
+        if attempt > 0 {
+            span?.attributes["http.request.resend_count"] = attempt
+        }
+
         let context = MiddlewareContext(
             attempt: attempt,
             requestID: requestID,
@@ -111,7 +118,7 @@ extension RequestExecutor {
             body: body.bodyDescription
         )
 
-        return try await MiddlewareChain.run(
+        let response = try await MiddlewareChain.run(
             head,
             through: middlewares,
             context: context
@@ -131,6 +138,9 @@ extension RequestExecutor {
                 throw mapError(error, requestID: requestID, action: action, logger: logger)
             }
         }
+
+        span?.attributes["http.response.status_code"] = Int(response.status.code)
+        return response
     }
 
     private func recordResponse(
@@ -354,10 +364,44 @@ extension RequestExecutor {
     }
 }
 
+// MARK: - Tracing
+
+extension RequestExecutor {
+    /// Runs one call, including all of its retry attempts, inside a span, so the transport's
+    /// per-attempt spans are grouped under it and the span covers backoff and body transfer.
+    private func traced<Success>(
+        _ operation: String,
+        _ body: ((any Span)?) async throws(NetSkeinError) -> Success
+    ) async throws(NetSkeinError) -> Success {
+        guard let tracer = client.tracer else { return try await body(nil) }
+
+        let span = tracer.startSpan("NetSkein \(method.rawValue)", ofKind: .internal)
+        defer { span.end() }
+        span.attributes["http.request.method"] = method.rawValue
+        span.attributes["netskein.operation"] = operation
+
+        // Make the span current, so the transport's spans become its children
+        let result = await ServiceContext.$current.withValue(span.context) {
+            await Result { () async throws(NetSkeinError) in try await body(span) }
+        }
+        if case let .failure(error) = result {
+            span.recordError(error)
+            span.setStatus(SpanStatus(code: .error))
+        }
+        return try result.get()
+    }
+}
+
 // MARK: Buffered Execution
 
 extension RequestExecutor {
     func send() async throws(NetSkeinError) -> NetSkeinResponse {
+        try await traced("send") { span throws(NetSkeinError) in
+            try await send(span: span)
+        }
+    }
+
+    private func send(span: (any Span)?) async throws(NetSkeinError) -> NetSkeinResponse {
         var attempt = 0
         var outcome: Result<NetSkeinResponse, NetSkeinError>
         var shouldRetry: Bool
@@ -382,7 +426,8 @@ extension RequestExecutor {
                     requestID: requestID,
                     attempt: attempt,
                     action: "Network request",
-                    logger: logger
+                    logger: logger,
+                    span: span
                 )
                 rawResponse = response
                 recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)
@@ -431,6 +476,15 @@ extension RequestExecutor {
     func stream(
         _ onChunk: ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
+        try await traced("stream") { span throws(NetSkeinError) in
+            try await stream(onChunk, span: span)
+        }
+    }
+
+    private func stream(
+        _ onChunk: ChunkHandler,
+        span: (any Span)?
+    ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
         var attempt = 0
         var outcome: Result<(status: HTTPResponseStatus, headers: HTTPHeaders), NetSkeinError>
         var shouldRetry: Bool
@@ -455,7 +509,8 @@ extension RequestExecutor {
                     requestID: requestID,
                     attempt: attempt,
                     action: "Streaming request",
-                    logger: logger
+                    logger: logger,
+                    span: span
                 )
                 rawResponse = response
                 recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)
@@ -521,6 +576,22 @@ extension RequestExecutor {
         resumption: DownloadResumption = .disabled,
         onProgress: DownloadProgress? = nil
     ) async throws(NetSkeinError) {
+        try await traced("download") { span throws(NetSkeinError) in
+            try await download(
+                to: path,
+                resumption: resumption,
+                onProgress: onProgress,
+                span: span
+            )
+        }
+    }
+
+    private func download(
+        to path: String,
+        resumption: DownloadResumption,
+        onProgress: DownloadProgress?,
+        span: (any Span)?
+    ) async throws(NetSkeinError) {
         var attempt = 0
         var activeValidator = resumption.validator
         var outcome: Result<Void, NetSkeinError>
@@ -576,7 +647,8 @@ extension RequestExecutor {
                     requestID: requestID,
                     attempt: attempt,
                     action: "Streaming download",
-                    logger: logger
+                    logger: logger,
+                    span: span
                 )
                 rawResponse = response
                 recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)

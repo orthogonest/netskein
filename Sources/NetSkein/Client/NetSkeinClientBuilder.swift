@@ -213,14 +213,13 @@ extension NetSkeinClientBuilder {
             config.decompression = .disabled
         }
 
-        switch tracer {
-        case .global:
-            break
-        case let .custom(tracer):
-            config.tracing.tracer = tracer
-        case .disabled:
-            config.tracing.tracer = nil
-        }
+        let resolvedTracer: (any Tracer)? =
+            switch tracer {
+            case .global: InstrumentationSystem.tracer
+            case let .custom(tracer): tracer
+            case .disabled: nil
+            }
+        config.tracing.tracer = resolvedTracer
 
         let transport = HTTPClient(
             eventLoopGroupProvider: eventLoopGroupProvider,
@@ -233,6 +232,7 @@ extension NetSkeinClientBuilder {
             cookieJar: cookieJar,
             retryPolicy: retryPolicy,
             middlewares: middlewares,
+            tracer: resolvedTracer,
             logger: logger
         )
     }

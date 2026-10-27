@@ -40,6 +40,7 @@ let package = Package(
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "Tracing", package: "swift-distributed-tracing"),
             ],
             path: "Sources/NetSkeinTesting",
         ),
@@ -54,7 +55,11 @@ let package = Package(
         ),
         .testTarget(
             name: "NetSkeinTestingTests",
-            dependencies: ["NetSkein", "NetSkeinTesting"],
+            dependencies: [
+                "NetSkein",
+                "NetSkeinTesting",
+                .product(name: "InMemoryTracing", package: "swift-distributed-tracing"),
+            ],
             path: "Tests/NetSkeinTestingTests",
         ),
     ]
