@@ -51,23 +51,6 @@ extension RequestExecutor {
         return RequestHead(method: method, url: url, headers: activeHeaders)
     }
 
-    private func prepareLogger(
-        requestID: String,
-        attempt: Int,
-        action: String
-    ) -> Logger {
-        var logger = client.logger
-        logger[metadataKey: "request_id"] = .string(requestID)
-        logger[metadataKey: "http_method"] = .string(method.rawValue)
-        logger[metadataKey: "url"] = .string(url)
-        if attempt > 0 {
-            logger[metadataKey: "retry_attempt"] = .string("\(attempt)")
-        }
-
-        logger.info(attempt == 0 ? "Initiating \(action)" : "Retrying \(action)")
-        return logger
-    }
-
     private func getCookie() -> String? {
         guard
             let jar = client.cookieJar,
@@ -99,17 +82,40 @@ extension RequestExecutor {
 // MARK: - Attempt Execution
 
 extension RequestExecutor {
+    /// One try at sending the request.
+    private struct Attempt {
+        /// 0 for the first try, 1 for the first retry, and so on.
+        let number: Int
+        /// The same for every attempt of a call.
+        let requestID: String
+        /// Tagged with this attempt's request metadata.
+        let logger: Logger
+        let startTime: DispatchTime
+    }
+
+    /// Starts an attempt and logs that it is being initiated or retried.
+    private func beginAttempt(_ number: Int, requestID: String, description: String) -> Attempt {
+        var logger = client.logger
+        logger[metadataKey: "request_id"] = .string(requestID)
+        logger[metadataKey: "http_method"] = .string(method.rawValue)
+        logger[metadataKey: "url"] = .string(url)
+        if number > 0 {
+            logger[metadataKey: "retry_attempt"] = .string("\(number)")
+        }
+
+        logger.info(number == 0 ? "Initiating \(description)" : "Retrying \(description)")
+        return Attempt(number: number, requestID: requestID, logger: logger, startTime: .now())
+    }
+
     private func execute(
         _ head: RequestHead,
-        requestID: String,
-        attempt: Int,
-        action: String,
-        logger: Logger
+        _ attempt: Attempt,
+        action: String
     ) async throws -> HTTPClientResponse {
         let context = MiddlewareContext(
-            attempt: attempt,
-            requestID: requestID,
-            logger: logger,
+            attempt: attempt.number,
+            requestID: attempt.requestID,
+            logger: attempt.logger,
             body: body.bodyDescription
         )
 
@@ -127,26 +133,22 @@ extension RequestExecutor {
                 return try await client.transport.execute(
                     request,
                     timeout: timeout ?? .seconds(30),
-                    logger: logger
+                    logger: attempt.logger
                 )
             } catch {
-                throw mapError(error, requestID: requestID, action: action, logger: logger)
+                throw mapError(error, attempt, action: action)
             }
         }
     }
 
-    private func recordResponse(
-        _ response: HTTPClientResponse,
-        requestID: String,
-        startTime: DispatchTime,
-        logger: Logger,
-    ) {
+    private func recordResponse(_ response: HTTPClientResponse, _ attempt: Attempt) {
         let endTime = DispatchTime.now()
         let duration =
-            Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / Nanoseconds.toSeconds
-        let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
+            Double(endTime.uptimeNanoseconds - attempt.startTime.uptimeNanoseconds)
+            / Nanoseconds.toSeconds
+        let activeResponseID = response.headers["X-Request-ID"].first ?? attempt.requestID
 
-        logger.info(
+        attempt.logger.info(
             "Response received",
             metadata: [
                 "request_id": .string(activeResponseID),
@@ -159,19 +161,14 @@ extension RequestExecutor {
         setCookie(cookieHeaders: cookieHeaders)
     }
 
-    private func mapError(
-        _ error: any Error,
-        requestID: String,
-        action: String,
-        logger: Logger
-    ) -> NetSkeinError {
+    private func mapError(_ error: any Error, _ attempt: Attempt, action: String) -> NetSkeinError {
         if let netSkeinError = error as? NetSkeinError {
             return netSkeinError
         }
-        logger.error(
+        attempt.logger.error(
             "\(action) failed",
             metadata: [
-                "request_id": .string(requestID),
+                "request_id": .string(attempt.requestID),
                 "error_description": .string(error.localizedDescription),
             ]
         )
@@ -202,11 +199,11 @@ extension RequestExecutor {
             }
         }
 
-        /// Whether a response that was handled without throwing can still be retried.
+        /// Whether the whole response is collected before the caller sees any of it.
         ///
-        /// Only buffered calls can: streamed chunks and written bytes cannot be taken back, so
-        /// those calls reject unwanted statuses by throwing instead.
-        var retriesHandledResponses: Bool { self == .send }
+        /// Only a buffered call can retry after its response was handled: nothing has reached
+        /// the caller yet, so the response can simply be thrown away.
+        var isBuffered: Bool { self == .send }
     }
 
     /// How one attempt is described in logs, and any headers it adds to the request.
@@ -230,9 +227,14 @@ extension RequestExecutor {
         prepareAttempt: () -> AttemptSetup,
         handle: (HTTPClientResponse, Logger) async throws -> Success
     ) async throws(NetSkeinError) -> Success {
-        try await traced(operation.rawValue) { span throws(NetSkeinError) in
-            try await runAttempts(
-                operation,
+        let requestID = UUID().uuidString
+
+        return try await traced(operation.rawValue) { span throws(NetSkeinError) in
+            span?.attributes["netskein.request_id"] = requestID
+            return try await makeAttempt(
+                0,
+                of: operation,
+                requestID: requestID,
                 span: span,
                 prepareAttempt: prepareAttempt,
                 handle: handle
@@ -240,95 +242,76 @@ extension RequestExecutor {
         }
     }
 
-    private func runAttempts<Success>(
-        _ operation: Operation,
+    /// Makes attempt `number`, then either finishes the call or backs off and makes the next one.
+    private func makeAttempt<Success>(
+        _ number: Int,
+        of operation: Operation,
+        requestID: String,
         span: (any Span)?,
         prepareAttempt: () -> AttemptSetup,
         handle: (HTTPClientResponse, Logger) async throws -> Success
     ) async throws(NetSkeinError) -> Success {
-        var attempt = 0
-        var outcome: Result<Success, NetSkeinError>
-        var shouldRetry: Bool
-        let requestID = UUID().uuidString
-        span?.attributes["netskein.request_id"] = requestID
+        try checkCancellation()
 
-        repeat {
-            try checkCancellation()
+        let setup = prepareAttempt()
+        let head = prepareRequest(requestID: requestID, extraHeaders: setup.extraHeaders)
+        let attempt = beginAttempt(number, requestID: requestID, description: setup.description)
+        if number > 0 {
+            span?.attributes["http.request.resend_count"] = number
+        }
 
-            let setup = prepareAttempt()
-            let head = prepareRequest(requestID: requestID, extraHeaders: setup.extraHeaders)
-            let logger = prepareLogger(
-                requestID: requestID,
-                attempt: attempt,
-                action: setup.description
-            )
-            if attempt > 0 {
-                span?.attributes["http.request.resend_count"] = attempt
-            }
+        var response: HTTPClientResponse?
+        do {
+            let received = try await execute(head, attempt, action: operation.action)
+            response = received
+            span?.attributes["http.response.status_code"] = Int(received.status.code)
+            recordResponse(received, attempt)
 
-            let startTime: DispatchTime = .now()
-            var rawResponse: HTTPClientResponse?
-
-            do {
-                let response = try await execute(
-                    head,
-                    requestID: requestID,
-                    attempt: attempt,
-                    action: operation.action,
-                    logger: logger
+            let result = try await handle(received, attempt.logger)
+            guard
+                operation.isBuffered,
+                await shouldRetry(
+                    after: attempt,
+                    status: received.status,
+                    headers: received.headers,
+                    error: nil
                 )
-                rawResponse = response
-                span?.attributes["http.response.status_code"] = Int(response.status.code)
-                recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)
-
-                outcome = .success(try await handle(response, logger))
-                if operation.retriesHandledResponses {
-                    shouldRetry = try await evaluateRetry(
-                        policy: activeRetryPolicy,
-                        attempt: &attempt,
-                        status: response.status,
-                        headers: response.headers,
-                        error: nil,
-                        logger: logger
-                    )
-                } else {
-                    shouldRetry = false
-                }
-            } catch {
-                let mappedError = mapError(
-                    error,
-                    requestID: requestID,
-                    action: operation.action,
-                    logger: logger
+            else { return result }
+        } catch {
+            let failure = mapError(error, attempt, action: operation.action)
+            guard
+                await shouldRetry(
+                    after: attempt,
+                    status: response?.status,
+                    headers: response?.headers,
+                    error: failure
                 )
+            else { throw failure }
+        }
 
-                outcome = .failure(mappedError)
-                shouldRetry = try await evaluateRetry(
-                    policy: activeRetryPolicy,
-                    attempt: &attempt,
-                    status: rawResponse?.status,
-                    headers: rawResponse?.headers,
-                    error: mappedError,
-                    logger: logger
-                )
-            }
-        } while shouldRetry
-
-        return try outcome.get()
+        try await backOff(before: number + 1, responseHeaders: response?.headers)
+        return try await makeAttempt(
+            number + 1,
+            of: operation,
+            requestID: requestID,
+            span: span,
+            prepareAttempt: prepareAttempt,
+            handle: handle
+        )
     }
 
-    private func evaluateRetry(
-        policy: RetryPolicy,
-        attempt: inout Int,
+    /// Asks the retry policy whether `attempt` should be followed by another one.
+    private func shouldRetry(
+        after attempt: Attempt,
         status: HTTPResponseStatus?,
         headers: HTTPHeaders?,
-        error: NetSkeinError?,
-        logger: Logger
-    ) async throws(NetSkeinError) -> Bool {
-        attempt += 1
+        error: NetSkeinError?
+    ) async -> Bool {
+        let policy = activeRetryPolicy
+        let nextNumber = attempt.number + 1
 
         let context = RetryContext(
-            attempt: attempt,
+            attempt: nextNumber,
             maxRetries: policy.maxRetries,
             method: method,
             url: url,
@@ -337,33 +320,27 @@ extension RequestExecutor {
             error: error
         )
 
-        let shouldRetry = await policy.evaluator(context)
+        guard await policy.evaluator(context), nextNumber <= policy.maxRetries else { return false }
 
-        if shouldRetry && attempt <= policy.maxRetries {
-            logger.warning(
-                "Request eligible for retry. Backing off before attempt \(attempt + 1)",
-                metadata: [
-                    "attempt": .string("\(attempt)"),
-                    "max_retries": .string("\(policy.maxRetries)"),
-                ]
-            )
-            try await sleepBetweenRetries(
-                policy: policy,
-                attempt: attempt,
-                responseHeaders: headers
-            )
-            return true
-        }
+        attempt.logger.warning(
+            "Request eligible for retry. Backing off before attempt \(nextNumber + 1)",
+            metadata: [
+                "attempt": .string("\(nextNumber)"),
+                "max_retries": .string("\(policy.maxRetries)"),
+            ]
+        )
 
-        return false
+        return true
     }
 
-    private func sleepBetweenRetries(
-        policy: RetryPolicy,
-        attempt: Int,
+    /// Waits before attempt `number`, as long as the policy's backoff or a `Retry-After`
+    /// header asks, whichever is longer.
+    private func backOff(
+        before number: Int,
         responseHeaders: HTTPHeaders?
     ) async throws(NetSkeinError) {
-        var delay = policy.backoff.delay(forAttempt: attempt)
+        let policy = activeRetryPolicy
+        var delay = policy.backoff.delay(forAttempt: number)
 
         if policy.respectRetryAfterHeader,
             let retryAfterDelay = RetryAfterParser.parseDelay(from: responseHeaders),
