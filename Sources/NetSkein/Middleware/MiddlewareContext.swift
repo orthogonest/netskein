@@ -4,7 +4,7 @@ import Logging
 public struct MiddlewareContext: Sendable {
     /// The 0-based attempt number; greater than 0 when the request is being retried.
     public let attempt: Int
-    /// The value sent in the `X-Request-ID` header for this attempt.
+    /// The value sent in the `X-Request-ID` header; the same for every attempt of a request.
     public let requestID: String
     /// A logger already tagged with this attempt's request metadata.
     public let logger: Logger

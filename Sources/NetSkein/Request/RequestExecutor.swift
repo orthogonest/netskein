@@ -64,12 +64,11 @@ extension RequestExecutor {
     }
 
     private func prepareRequest(
-        attempt: Int,
+        requestID: String,
         headerModifier: ((inout HTTPHeaders) -> Void)? = nil
-    ) -> (head: RequestHead, requestID: String) {
+    ) -> RequestHead {
         var activeHeaders = headers
 
-        let requestID = UUID().uuidString
         activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
 
         if let cookieValue = getCookie() {
@@ -78,9 +77,7 @@ extension RequestExecutor {
 
         headerModifier?(&activeHeaders)
 
-        let head = RequestHead(method: method, url: url, headers: activeHeaders)
-
-        return (head, requestID)
+        return RequestHead(method: method, url: url, headers: activeHeaders)
     }
 
     private func prepareLogger(
@@ -364,11 +361,12 @@ extension RequestExecutor {
         var attempt = 0
         var outcome: Result<NetSkeinResponse, NetSkeinError>
         var shouldRetry: Bool
+        let requestID = UUID().uuidString
 
         repeat {
             try checkCancellation()
 
-            let (head, requestID) = prepareRequest(attempt: attempt)
+            let head = prepareRequest(requestID: requestID)
             let logger = prepareLogger(
                 requestID: requestID,
                 attempt: attempt,
@@ -436,11 +434,12 @@ extension RequestExecutor {
         var attempt = 0
         var outcome: Result<(status: HTTPResponseStatus, headers: HTTPHeaders), NetSkeinError>
         var shouldRetry: Bool
+        let requestID = UUID().uuidString
 
         repeat {
             try checkCancellation()
 
-            let (head, requestID) = prepareRequest(attempt: attempt)
+            let head = prepareRequest(requestID: requestID)
             let logger = prepareLogger(
                 requestID: requestID,
                 attempt: attempt,
@@ -526,6 +525,7 @@ extension RequestExecutor {
         var activeValidator = resumption.validator
         var outcome: Result<Void, NetSkeinError>
         var shouldRetry: Bool
+        let requestID = UUID().uuidString
 
         if resumption == .disabled || resumption == .onRetry {
             if FileManager.default.fileExists(atPath: path) {
@@ -550,7 +550,7 @@ extension RequestExecutor {
             // Inject Range & If-Range headers only when applicable (GET requests with existing bytes)
             let isResuming = existingBytes > 0 && method == .GET
 
-            let (head, requestID) = prepareRequest(attempt: attempt) { reqHeaders in
+            let head = prepareRequest(requestID: requestID) { reqHeaders in
                 if isResuming {
                     reqHeaders.replaceOrAdd(name: "Range", value: "bytes=\(existingBytes)-")
                     if let activeValidator {

@@ -929,6 +929,64 @@ extension RequestExecutorTests {
     }
 }
 
+// MARK: Request ID
+
+extension RequestExecutorTests {
+    @Test(
+        "RequestExecutorTests: Verifies retries keep the request ID and separate calls get new ones"
+    )
+    func testRequestIDIsStableAcrossRetries() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_request_id_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let sentIDs = NIOLockedValueBox<[String]>([])
+        let recordID: HTTPStub.Validator = { request in
+            let id = request.headers.first(name: "X-Request-ID") ?? ""
+            sentIDs.withLockedValue { $0.append(id) }
+        }
+        // Each call fails once and then succeeds, so every call makes two attempts
+        let stubs = (0..<3)
+            .flatMap { _ in
+                [
+                    HTTPStub(
+                        method: .GET,
+                        url: "https://api.example.com/request-id",
+                        requestValidator: recordID,
+                        outcome: .response(status: .serviceUnavailable, headers: [:])
+                    ),
+                    HTTPStub(
+                        method: .GET,
+                        url: "https://api.example.com/request-id",
+                        requestValidator: recordID,
+                        outcome: .response(
+                            status: .ok,
+                            headers: [:],
+                            body: ByteBuffer(string: "ok")
+                        )
+                    ),
+                ]
+            }
+        let client = NetSkeinClient.testing().addStubs(stubs).build()
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/request-id",
+            retryPolicy: .standard(maxRetries: 1, backoff: .immediate)
+        )
+
+        _ = try await executor.send()
+        _ = try await executor.stream { _, _, _ in }
+        try await executor.download(to: tempURL.path)
+
+        let ids = sentIDs.withLockedValue { $0 }
+        #expect(ids.count == 6)
+        #expect(ids[0] == ids[1])
+        #expect(ids[2] == ids[3])
+        #expect(ids[4] == ids[5])
+        #expect(Set([ids[0], ids[2], ids[4]]).count == 3)
+    }
+}
+
 // MARK: - Middleware Execution
 
 extension RequestExecutorTests {
@@ -949,11 +1007,13 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStubs([stubFail, stubSuccess]).build()
 
         let seen = NIOLockedValueBox<
-            [(attempt: Int, idMatches: Bool, body: RequestBodyDescription)]
+            [(attempt: Int, requestID: String, idMatches: Bool, body: RequestBodyDescription)]
         >([])
         let recorder = ClosureMiddleware { request, context, next in
             let idMatches = request.headers.first(name: "X-Request-ID") == context.requestID
-            seen.withLockedValue { $0.append((context.attempt, idMatches, context.body)) }
+            seen.withLockedValue {
+                $0.append((context.attempt, context.requestID, idMatches, context.body))
+            }
             return try await next(request)
         }
 
@@ -973,6 +1033,7 @@ extension RequestExecutorTests {
         #expect(response.status == .ok)
         #expect(records.map(\.attempt) == [0, 1])
         #expect(records.map(\.idMatches) == [true, true])
+        #expect(Set(records.map(\.requestID)).count == 1)
         #expect(records.map(\.body) == [expectedBody, expectedBody])
     }
 
