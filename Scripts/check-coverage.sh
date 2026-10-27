@@ -19,7 +19,7 @@ echo -e "${BOLD}${CYAN}Calculating code coverage...${RESET}"
 
 # --- DYNAMIC PATH RESOLUTION ---
 # Find the compiled test binary within the .build directory automatically
-TEST_BINARY=$(find .build -type f -perm +111 -name "*Tests" | grep -v "\.dSYM" | grep -v "\.json" | head -n 1)
+TEST_BINARY=$(find .build -type f -perm +111 -name "*Tests" | grep -v "\.dSYM" | grep -v "\.json" | xargs ls -t | head -n 1)
 
 # Dynamically find the actual .profdata file inside the build directory
 PROFDATA_PATH=$(find .build -type f -name "*.profdata" | head -n 1)
