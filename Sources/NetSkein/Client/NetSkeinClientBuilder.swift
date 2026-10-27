@@ -4,8 +4,15 @@ import NIOCore
 import NIOHTTP1
 import NIOHTTPCompression
 import NIOSSL
+import Tracing
 
 public struct NetSkeinClientBuilder: Sendable {
+    private enum TracerSelection: Sendable {
+        case global
+        case custom(any Tracer)
+        case disabled
+    }
+
     private var connectTimeout: TimeAmount
     private var readTimeout: TimeAmount
     private var writeTimeout: TimeAmount
@@ -20,6 +27,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var middlewares: [any HTTPMiddleware]
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool
+    private var tracer: TracerSelection
     private var logger: Logger
 
     public init() {
@@ -34,6 +42,7 @@ public struct NetSkeinClientBuilder: Sendable {
         retryPolicy = .disabled
         middlewares = []
         acceptInvalidCertificates = false
+        tracer = .global
         logger = Logger(label: LoggerLabel.identifier)
     }
 }
@@ -155,6 +164,23 @@ extension NetSkeinClientBuilder {
         return copy
     }
 
+    /// Reports request spans to `tracer` instead of the globally bootstrapped tracer.
+    @discardableResult
+    public func tracer(_ tracer: any Tracer) -> Self {
+        var copy = self
+        copy.tracer = .custom(tracer)
+        return copy
+    }
+
+    /// Stops the built client from creating spans or sending trace headers, even when a global
+    /// tracer is bootstrapped.
+    @discardableResult
+    public func disableTracing() -> Self {
+        var copy = self
+        copy.tracer = .disabled
+        return copy
+    }
+
     @discardableResult
     public func logger(_ logger: Logger) -> Self {
         var copy = self
@@ -185,6 +211,15 @@ extension NetSkeinClientBuilder {
             config.decompression = .enabled(limit: decompressionLimit)
         } else {
             config.decompression = .disabled
+        }
+
+        switch tracer {
+        case .global:
+            break
+        case let .custom(tracer):
+            config.tracing.tracer = tracer
+        case .disabled:
+            config.tracing.tracer = nil
         }
 
         let transport = HTTPClient(

@@ -1,9 +1,11 @@
 import AsyncHTTPClient
+import InMemoryTracing
 import Logging
 import NIOCore
 import NIOHTTP1
 import NIOSSL
 import Testing
+import Tracing
 
 @testable import NetSkein
 
@@ -129,6 +131,49 @@ extension NetSkeinClientBuilderTests {
         #expect(client.middlewares.last is ClosureMiddleware)
 
         try await client.shutdown()
+    }
+}
+
+// MARK: - Tracing
+
+extension NetSkeinClientBuilderTests {
+    @Test("NetSkeinClientBuilderTests: Verifies the client uses the global tracer by default")
+    func testTracerDefaultsToGlobal() async throws {
+        let client = NetSkeinClient.builder().build()
+
+        #expect(client.transport.tracer is NoOpTracer)
+
+        try await client.shutdown()
+    }
+
+    @Test("NetSkeinClientBuilderTests: Verifies a custom tracer is passed to the transport")
+    func testCustomTracer() async throws {
+        let client = NetSkeinClient.builder().tracer(InMemoryTracer()).build()
+
+        #expect(client.transport.tracer is InMemoryTracer)
+
+        try await client.shutdown()
+    }
+
+    @Test("NetSkeinClientBuilderTests: Verifies disabling tracing removes the tracer")
+    func testDisableTracing() async throws {
+        let client = NetSkeinClient.builder().disableTracing().build()
+
+        #expect(client.transport.tracer == nil)
+
+        try await client.shutdown()
+    }
+
+    @Test("NetSkeinClientBuilderTests: Verifies the last tracing call wins")
+    func testLastTracingCallWins() async throws {
+        let traced = NetSkeinClient.builder().disableTracing().tracer(InMemoryTracer()).build()
+        let untraced = NetSkeinClient.builder().tracer(InMemoryTracer()).disableTracing().build()
+
+        #expect(traced.transport.tracer is InMemoryTracer)
+        #expect(untraced.transport.tracer == nil)
+
+        try await traced.shutdown()
+        try await untraced.shutdown()
     }
 }
 
