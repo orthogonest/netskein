@@ -98,6 +98,23 @@ struct BodySourceTests {
     }
 }
 
+// MARK: - Body Description
+
+extension BodySourceTests {
+    @Test("BodySourceTests: Verifies bodyDescription exposes each body kind read-only")
+    func testBodyDescription() {
+        let buffer = ByteBuffer(string: "payload")
+
+        #expect(BodySource.none.bodyDescription == .none)
+        #expect(BodySource.bytes(buffer).bodyDescription == .bytes(buffer))
+        #expect(
+            BodySource.file(path: "/tmp/upload.bin", chunkSize: 1024, onProgress: nil)
+                .bodyDescription
+                == .file(path: "/tmp/upload.bin")
+        )
+    }
+}
+
 // MARK: - Test Helpers
 
 extension BodySourceTests {

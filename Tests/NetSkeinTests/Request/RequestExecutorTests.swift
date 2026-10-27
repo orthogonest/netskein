@@ -33,7 +33,7 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/data")
 
-        let response = try await executor.execute()
+        let response = try await executor.send()
 
         #expect(response.status == .ok)
         #expect(response.headers.first(name: "Content-Type") == "application/json")
@@ -71,7 +71,7 @@ extension RequestExecutorTests {
             .build()
 
         let executor = makeExecutor(client: client, url: "https://api.example.com/profile")
-        _ = try await executor.execute()
+        _ = try await executor.send()
 
         #expect(isCookieSent.withLockedValue { $0 } == true)
         #expect(cookieJar.cookieHeader(for: "api.example.com")?.contains("user=octocat") == true)
@@ -102,7 +102,7 @@ extension RequestExecutorTests {
             retryPolicy: .standard(maxRetries: 2, backoff: .immediate)
         )
 
-        let response = try await executor.execute()
+        let response = try await executor.send()
         #expect(response.status == .ok)
         #expect(response.text() == "Recovered!")
     }
@@ -123,7 +123,7 @@ extension RequestExecutorTests {
         )
 
         await #expect(throws: NetSkeinError.self) {
-            _ = try await executor.execute()
+            _ = try await executor.send()
         }
     }
 
@@ -141,7 +141,7 @@ extension RequestExecutorTests {
         let executor = makeExecutor(client: client, url: "https://api.example.com/slow")
 
         let task = Task {
-            try await executor.execute()
+            try await executor.send()
         }
         task.cancel()
 
@@ -185,7 +185,7 @@ extension RequestExecutorTests {
             url: "https://api.example.com/retry-after-override",
             retryPolicy: policy
         )
-        let response = try await executor.execute()
+        let response = try await executor.send()
         #expect(response.status == .ok)
     }
 
@@ -211,7 +211,7 @@ extension RequestExecutorTests {
         )
 
         let task = Task {
-            try await executor.execute()
+            try await executor.send()
         }
 
         // Give it time to fail attempt 0 and enter sleep
@@ -245,7 +245,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            _ = try await executor.execute()
+            _ = try await executor.send()
             Issue.record("Expected execute() to throw after retries exhausted")
         } catch {
             #expect(error.kind == .networkFailure)
@@ -270,7 +270,7 @@ extension RequestExecutorTests {
         let executor = makeExecutor(client: client, url: "https://api.example.com/stream")
 
         let receivedBuffer = NIOLockedValueBox(ByteBuffer())
-        let result = try await executor.execute { chunk, _, _ in
+        let result = try await executor.stream { chunk, _, _ in
             _ = receivedBuffer.withLockedValue { $0.writeImmutableBuffer(chunk) }
         }
 
@@ -294,7 +294,7 @@ extension RequestExecutorTests {
         )
 
         await #expect(throws: NetSkeinError.self) {
-            _ = try await executor.execute { _, _, _ in }
+            _ = try await executor.stream { _, _, _ in }
         }
     }
 
@@ -317,7 +317,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            _ = try await executor.execute { _, _, _ in
+            _ = try await executor.stream { _, _, _ in
                 throw MockConsumerError()
             }
             Issue.record("Expected consumer callback error to throw clientError")
@@ -350,7 +350,7 @@ extension RequestExecutorTests {
             retryPolicy: .standard(maxRetries: 1, backoff: .immediate)
         )
 
-        let result = try await executor.execute { _, _, _ in }
+        let result = try await executor.stream { _, _, _ in }
         #expect(result.status == .ok)
     }
 }
@@ -377,8 +377,8 @@ extension RequestExecutorTests {
 
         let progressReported = NIOLockedValueBox(false)
 
-        try await executor.execute(
-            downloadTo: destURL.path,
+        try await executor.download(
+            to: destURL.path,
             resumption: .disabled,
             onProgress: { transferred, total in
                 #expect(transferred == 31)
@@ -426,8 +426,8 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/file.bin")
 
-        try await executor.execute(
-            downloadTo: destURL.path,
+        try await executor.download(
+            to: destURL.path,
             resumption: .ifPossible(validator: "\"initial-etag\"")
         )
 
@@ -462,8 +462,8 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/file.bin")
 
-        try await executor.execute(
-            downloadTo: destURL.path,
+        try await executor.download(
+            to: destURL.path,
             resumption: .ifPossible(validator: "\"etag\"")
         )
 
@@ -494,8 +494,8 @@ extension RequestExecutorTests {
         )
 
         await #expect(throws: NetSkeinError.self) {
-            try await executor.execute(
-                downloadTo: destURL.path,
+            try await executor.download(
+                to: destURL.path,
                 resumption: .ifPossible()
             )
         }
@@ -524,7 +524,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.execute(downloadTo: impossiblePath)
+            try await executor.download(to: impossiblePath)
             Issue.record("Expected download to throw .ioFailure for invalid path")
         } catch {
             #expect(error.kind == .ioFailure)
@@ -563,7 +563,7 @@ extension RequestExecutorTests {
             retryPolicy: policy
         )
 
-        let response = try await executor.execute()
+        let response = try await executor.send()
         #expect(response.status == .ok)
     }
 
@@ -611,7 +611,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.execute(downloadTo: destURL.path, resumption: .ifPossible())
+            try await executor.download(to: destURL.path, resumption: .ifPossible())
             Issue.record(
                 "Expected download to throw .ioFailure when opening read-only file for append"
             )
@@ -643,7 +643,7 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/fresh-replace")
 
-        try await executor.execute(downloadTo: destURL.path, resumption: .disabled)
+        try await executor.download(to: destURL.path, resumption: .disabled)
 
         let resultData = try String(contentsOf: destURL, encoding: .utf8)
         #expect(resultData == "NEW")
@@ -666,7 +666,7 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/file-with-date")
 
-        try await executor.execute(downloadTo: destURL.path, resumption: .onRetry)
+        try await executor.download(to: destURL.path, resumption: .onRetry)
         #expect(FileManager.default.fileExists(atPath: destURL.path))
     }
 
@@ -689,7 +689,7 @@ extension RequestExecutorTests {
         )
 
         await #expect(throws: NetSkeinError.self) {
-            try await executor.execute(downloadTo: destURL.path)
+            try await executor.download(to: destURL.path)
         }
     }
 
@@ -717,7 +717,7 @@ extension RequestExecutorTests {
             retryPolicy: .standard(maxRetries: 1, backoff: .immediate)
         )
 
-        try await executor.execute(downloadTo: destURL.path)
+        try await executor.download(to: destURL.path)
         let data = try String(contentsOf: destURL, encoding: .utf8)
         #expect(data == "SAVED")
     }
@@ -751,7 +751,7 @@ extension RequestExecutorTests {
         )
 
         let task = Task {
-            try await executor.execute(downloadTo: destURL.path)
+            try await executor.download(to: destURL.path)
         }
         taskBox.withLockedValue { $0 = task }
 
@@ -789,8 +789,8 @@ extension RequestExecutorTests {
 
         let reportedTotal = NIOLockedValueBox<Int64?>(nil)
 
-        try await executor.execute(
-            downloadTo: destURL.path,
+        try await executor.download(
+            to: destURL.path,
             resumption: .ifPossible(),
             onProgress: { _, total in
                 reportedTotal.withLockedValue { $0 = total }
@@ -815,7 +815,7 @@ extension RequestExecutorTests {
         let client = NetSkeinClient.testing().addStub(stub).build()
         let executor = makeExecutor(client: client, url: "https://api.example.com/empty-file")
 
-        try await executor.execute(downloadTo: destURL.path)
+        try await executor.download(to: destURL.path)
 
         let size = try FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int64
         #expect(size == 0)
@@ -846,7 +846,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.execute(downloadTo: destURL.path)
+            try await executor.download(to: destURL.path)
             Issue.record("Expected download to throw .networkFailure when the body stream fails")
         } catch {
             #expect(error.kind == .networkFailure)
@@ -882,7 +882,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.execute(downloadTo: fifo.path, resumption: .ifPossible())
+            try await executor.download(to: fifo.path, resumption: .ifPossible())
             Issue.record("Expected download to throw .ioFailure when the target cannot be seeked")
         } catch {
             #expect(error.kind == .ioFailure)
@@ -915,8 +915,8 @@ extension RequestExecutorTests {
 
         do {
             // After the first chunk lands, revoke write access so the second chunk's write fails
-            try await executor.execute(
-                downloadTo: destURL.path,
+            try await executor.download(
+                to: destURL.path,
                 onProgress: { _, _ in
                     revokeWriteAccess(toOpenFileAt: destURL.path)
                 }
@@ -926,6 +926,216 @@ extension RequestExecutorTests {
             #expect(error.kind == .ioFailure)
             #expect(error.errorDescription?.contains("Failed writing chunk") == true)
         }
+    }
+}
+
+// MARK: Request ID
+
+extension RequestExecutorTests {
+    @Test(
+        "RequestExecutorTests: Verifies retries keep the request ID and separate calls get new ones"
+    )
+    func testRequestIDIsStableAcrossRetries() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_request_id_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let sentIDs = NIOLockedValueBox<[String]>([])
+        let recordID: HTTPStub.Validator = { request in
+            let id = request.headers.first(name: "X-Request-ID") ?? ""
+            sentIDs.withLockedValue { $0.append(id) }
+        }
+        // Each call fails once and then succeeds, so every call makes two attempts
+        let stubs = (0..<3)
+            .flatMap { _ in
+                [
+                    HTTPStub(
+                        method: .GET,
+                        url: "https://api.example.com/request-id",
+                        requestValidator: recordID,
+                        outcome: .response(status: .serviceUnavailable, headers: [:])
+                    ),
+                    HTTPStub(
+                        method: .GET,
+                        url: "https://api.example.com/request-id",
+                        requestValidator: recordID,
+                        outcome: .response(
+                            status: .ok,
+                            headers: [:],
+                            body: ByteBuffer(string: "ok")
+                        )
+                    ),
+                ]
+            }
+        let client = NetSkeinClient.testing().addStubs(stubs).build()
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/request-id",
+            retryPolicy: .standard(maxRetries: 1, backoff: .immediate)
+        )
+
+        _ = try await executor.send()
+        _ = try await executor.stream { _, _, _ in }
+        try await executor.download(to: tempURL.path)
+
+        let ids = sentIDs.withLockedValue { $0 }
+        #expect(ids.count == 6)
+        #expect(ids[0] == ids[1])
+        #expect(ids[2] == ids[3])
+        #expect(ids[4] == ids[5])
+        #expect(Set([ids[0], ids[2], ids[4]]).count == 3)
+    }
+}
+
+// MARK: - Middleware Execution
+
+extension RequestExecutorTests {
+    @Test(
+        "RequestExecutorTests: Verifies middleware sees every retry attempt with its request ID and body"
+    )
+    func testMiddlewareContextPerAttempt() async throws {
+        let stubFail = HTTPStub(
+            method: .PUT,
+            urlMatcher: { $0.contains("/middleware-context") },
+            outcome: .response(status: .serviceUnavailable, headers: [:], body: nil)
+        )
+        let stubSuccess = HTTPStub(
+            method: .PUT,
+            urlMatcher: { $0.contains("/middleware-context") },
+            outcome: .response(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStubs([stubFail, stubSuccess]).build()
+
+        let seen = NIOLockedValueBox<
+            [(attempt: Int, requestID: String, idMatches: Bool, body: RequestBodyDescription)]
+        >([])
+        let recorder = ClosureMiddleware { request, context, next in
+            let idMatches = request.headers.first(name: "X-Request-ID") == context.requestID
+            seen.withLockedValue {
+                $0.append((context.attempt, context.requestID, idMatches, context.body))
+            }
+            return try await next(request)
+        }
+
+        let executor = makeExecutor(
+            client: client,
+            method: .PUT,
+            url: "https://api.example.com/middleware-context",
+            body: .bytes(ByteBuffer(string: "payload")),
+            retryPolicy: .standard(maxRetries: 1, backoff: .immediate),
+            middlewares: [recorder]
+        )
+
+        let response = try await executor.send()
+
+        let records = seen.withLockedValue { $0 }
+        let expectedBody = RequestBodyDescription.bytes(ByteBuffer(string: "payload"))
+        #expect(response.status == .ok)
+        #expect(records.map(\.attempt) == [0, 1])
+        #expect(records.map(\.idMatches) == [true, true])
+        #expect(Set(records.map(\.requestID)).count == 1)
+        #expect(records.map(\.body) == [expectedBody, expectedBody])
+    }
+
+    @Test(
+        "RequestExecutorTests: Verifies calling next twice re-sends a complete fresh file body"
+    )
+    func testMiddlewareResendGetsFreshBody() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_middleware_resend_\(UUID().uuidString).bin")
+        try Data(repeating: 0x42, count: 100).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let transport = BodyDrainingTransport()
+        let client = NetSkeinClient(transport: transport, logger: Logger(label: LoggerLabel.test))
+        let resend = ClosureMiddleware { request, _, next in
+            _ = try await next(request)
+            return try await next(request)
+        }
+
+        let executor = makeExecutor(
+            client: client,
+            method: .PUT,
+            url: "https://api.example.com/upload",
+            body: .file(path: tempURL.path, chunkSize: 32, onProgress: nil),
+            retryPolicy: .disabled,
+            middlewares: [resend]
+        )
+
+        _ = try await executor.send()
+
+        // A reused single-pass stream would deliver 100 bytes the first time and 0 the second
+        #expect(transport.receivedBodySizes == [100, 100])
+    }
+
+    @Test(
+        "RequestExecutorTests: Verifies a middleware failure is not retried as a network failure"
+    )
+    func testMiddlewareFailureIsNotRetried() async {
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/middleware-failure",
+            outcome: .response(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let invocations = NIOLockedValueBox(0)
+        let failing = ClosureMiddleware { _, _, _ in
+            invocations.withLockedValue { $0 += 1 }
+            throw MockStubOutageError()
+        }
+
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/middleware-failure",
+            retryPolicy: .standard(maxRetries: 2, backoff: .immediate),
+            middlewares: [failing]
+        )
+
+        do {
+            _ = try await executor.send()
+            Issue.record("Expected execute() to throw .middlewareFailure")
+        } catch {
+            #expect(error.kind == .middlewareFailure)
+        }
+        #expect(invocations.withLockedValue { $0 } == 1)
+    }
+
+    @Test("RequestExecutorTests: Verifies middleware applies to streaming and download requests")
+    func testMiddlewareAppliesToStreamAndDownload() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_middleware_download_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let validatedRequests = NIOLockedValueBox(0)
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/middleware-transfer",
+            requestValidator: { request in
+                #expect(request.headers.first(name: "X-Middleware") == "applied")
+                validatedRequests.withLockedValue { $0 += 1 }
+            },
+            outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: "data"))
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        let addHeader = ClosureMiddleware { request, _, next in
+            var request = request
+            request.headers.replaceOrAdd(name: "X-Middleware", value: "applied")
+            return try await next(request)
+        }
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/middleware-transfer",
+            retryPolicy: .disabled,
+            middlewares: [addHeader]
+        )
+
+        _ = try await executor.stream { _, _, _ in }
+        try await executor.download(to: tempURL.path)
+
+        #expect(validatedRequests.withLockedValue { $0 } == 2)
+        #expect(try String(contentsOf: tempURL, encoding: .utf8) == "data")
     }
 }
 
@@ -940,7 +1150,8 @@ extension RequestExecutorTests {
         body: BodySource = .none,
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
-        maxResponseBytes: Int = 10 * 1024 * 1024
+        maxResponseBytes: Int = 10 * 1024 * 1024,
+        middlewares: [any HTTPMiddleware] = []
     ) -> RequestExecutor<Transport> {
         RequestExecutor(
             client: client,
@@ -950,7 +1161,8 @@ extension RequestExecutorTests {
             body: body,
             timeout: timeout,
             retryPolicy: retryPolicy,
-            maxResponseBytes: maxResponseBytes
+            maxResponseBytes: maxResponseBytes,
+            middlewares: middlewares
         )
     }
 
@@ -1005,6 +1217,30 @@ private struct StreamingHTTPClient: HTTPTransport {
             continuation.finish(throwing: failure)
         }
         return HTTPClientResponse(status: status, headers: headers, body: .stream(body))
+    }
+
+    func shutdown() async throws {}
+}
+
+// MARK: - Body Draining Transport
+
+/// Reads every request body to the end, recording how many bytes each request carried.
+private final class BodyDrainingTransport: HTTPTransport {
+    private let bodySizes = NIOLockedValueBox<[Int]>([])
+
+    var receivedBodySizes: [Int] { bodySizes.withLockedValue { $0 } }
+
+    func execute(
+        _ request: HTTPClientRequest,
+        timeout: TimeAmount,
+        logger: Logger?
+    ) async throws -> HTTPClientResponse {
+        var size = 0
+        if let body = request.body {
+            for try await chunk in body { size += chunk.readableBytes }
+        }
+        bodySizes.withLockedValue { $0.append(size) }
+        return HTTPClientResponse(status: .ok)
     }
 
     func shutdown() async throws {}

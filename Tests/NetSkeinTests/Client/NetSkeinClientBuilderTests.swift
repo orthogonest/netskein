@@ -113,3 +113,31 @@ extension NetSkeinClientBuilderTests {
         try await client.shutdown()
     }
 }
+
+// MARK: - Middleware Registration
+
+extension NetSkeinClientBuilderTests {
+    @Test("NetSkeinClientBuilderTests: Verifies using appends type and closure middleware in order")
+    func testUsingAppendsMiddleware() async throws {
+        let client = NetSkeinClient.builder()
+            .using(PassThroughMiddleware())
+            .using { request, _, next in try await next(request) }
+            .build()
+
+        #expect(client.middlewares.count == 2)
+        #expect(client.middlewares.first is PassThroughMiddleware)
+        #expect(client.middlewares.last is ClosureMiddleware)
+
+        try await client.shutdown()
+    }
+}
+
+private struct PassThroughMiddleware: HTTPMiddleware {
+    func intercept(
+        _ request: RequestHead,
+        context: MiddlewareContext,
+        next: Next
+    ) async throws -> HTTPClientResponse {
+        try await next(request)
+    }
+}

@@ -18,6 +18,7 @@ public struct NetSkeinRequest<Transport: HTTPTransport, Body: BodyState>: Sendab
     private var maxResponseBytes: Int
     private var timeout: TimeAmount?
     private var retryPolicy: RetryPolicy?
+    private var middlewares: [any HTTPMiddleware]
     private let percentEncoder: PercentEncoder
 
     init(
@@ -29,6 +30,7 @@ public struct NetSkeinRequest<Transport: HTTPTransport, Body: BodyState>: Sendab
         maxResponseBytes: Int = 10 * 1024 * 1024,
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
+        middlewares: [any HTTPMiddleware] = [],
         percentEncoder: PercentEncoder = .default,
     ) {
         self.client = client
@@ -39,6 +41,7 @@ public struct NetSkeinRequest<Transport: HTTPTransport, Body: BodyState>: Sendab
         self.maxResponseBytes = maxResponseBytes
         self.timeout = timeout
         self.retryPolicy = retryPolicy
+        self.middlewares = middlewares
         self.percentEncoder = percentEncoder
     }
 }
@@ -120,6 +123,27 @@ extension NetSkeinRequest {
         copy.retryPolicy = policy
         return copy
     }
+
+    /// Adds a middleware for this request only; it runs inside the client's middleware.
+    @discardableResult
+    public func using(_ middleware: some HTTPMiddleware) -> Self {
+        var copy = self
+        copy.middlewares.append(middleware)
+        return copy
+    }
+
+    /// Adds a closure as a middleware for this request only.
+    @discardableResult
+    public func using(
+        _ intercept:
+            @escaping @Sendable (
+                RequestHead,
+                MiddlewareContext,
+                HTTPMiddleware.Next
+            ) async throws -> HTTPClientResponse
+    ) -> Self {
+        using(ClosureMiddleware(intercept))
+    }
 }
 
 extension NetSkeinRequest where Body == BodyAllowed {
@@ -146,6 +170,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
+            middlewares: copy.middlewares,
             percentEncoder: copy.percentEncoder,
         )
     }
@@ -173,6 +198,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
                 maxResponseBytes: copy.maxResponseBytes,
                 timeout: copy.timeout,
                 retryPolicy: copy.retryPolicy,
+                middlewares: copy.middlewares,
                 percentEncoder: copy.percentEncoder,
             )
         } catch {
@@ -204,6 +230,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
+            middlewares: copy.middlewares,
             percentEncoder: copy.percentEncoder,
         )
     }
@@ -252,6 +279,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
+            middlewares: copy.middlewares,
             percentEncoder: copy.percentEncoder,
         )
     }
@@ -269,6 +297,7 @@ extension NetSkeinRequest where Body == BodyForbidden {
             maxResponseBytes: self.maxResponseBytes,
             timeout: self.timeout,
             retryPolicy: self.retryPolicy,
+            middlewares: self.middlewares,
             percentEncoder: self.percentEncoder,
         )
     }
@@ -386,20 +415,21 @@ extension NetSkeinRequest {
             timeout: timeout,
             retryPolicy: retryPolicy,
             maxResponseBytes: maxResponseBytes,
+            middlewares: client.middlewares + middlewares,
         )
     }
 }
 
 extension NetSkeinRequest {
     public func send() async throws(NetSkeinError) -> NetSkeinResponse {
-        try await executor.execute()
+        try await executor.send()
     }
 
     @discardableResult
     public func stream(
         _ onChunk: ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
-        try await executor.execute(stream: onChunk)
+        try await executor.stream(onChunk)
     }
 
     public func download(
@@ -407,6 +437,6 @@ extension NetSkeinRequest {
         resumption: DownloadResumption = .disabled,
         onProgress: DownloadProgress? = nil
     ) async throws(NetSkeinError) {
-        try await executor.execute(downloadTo: path, resumption: resumption, onProgress: onProgress)
+        try await executor.download(to: path, resumption: resumption, onProgress: onProgress)
     }
 }

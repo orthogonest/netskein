@@ -7,6 +7,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
     let defaultHeaders: HTTPHeaders
     let cookieJar: CookieJar?
     let retryPolicy: RetryPolicy
+    let middlewares: [any HTTPMiddleware]
     let logger: Logger
     let percentEncoder: PercentEncoder
 
@@ -15,6 +16,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: CookieJar? = nil,
         retryPolicy: RetryPolicy = .disabled,
+        middlewares: [any HTTPMiddleware] = [],
         logger: Logger,
         percentEncoder: PercentEncoder = .default,
     ) {
@@ -22,6 +24,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
         self.defaultHeaders = defaultHeaders
         self.cookieJar = cookieJar
         self.retryPolicy = retryPolicy
+        self.middlewares = middlewares
         self.logger = logger
         self.percentEncoder = percentEncoder
     }

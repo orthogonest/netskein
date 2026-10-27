@@ -14,6 +14,14 @@ enum BodySource: Sendable {
 }
 
 extension BodySource {
+    var bodyDescription: RequestBodyDescription {
+        switch self {
+        case .none: return .none
+        case let .bytes(buffer): return .bytes(buffer)
+        case let .file(path, _, _): return .file(path: path)
+        }
+    }
+
     func makeBody() throws(NetSkeinError) -> HTTPClientRequest.Body? {
         switch self {
         case .none:

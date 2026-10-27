@@ -8,9 +8,11 @@ let package = Package(
         .executable(name: "GetHTML", targets: ["GetHTML"]),
         .executable(name: "GetJSON", targets: ["GetJSON"]),
         .executable(name: "StreamingByteCounter", targets: ["StreamingByteCounter"]),
+        .executable(name: "CurlLogging", targets: ["CurlLogging"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
 
         // in real-world projects this would be
         // .package(url: "https://github.com/orthogonest/netskein.git", from: "0.1.0")
@@ -41,6 +43,14 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
             ],
             path: "StreamingByteCounter"
+        ),
+        .executableTarget(
+            name: "CurlLogging",
+            dependencies: [
+                .product(name: "NetSkein", package: "netskein"),
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            path: "CurlLogging"
         ),
     ]
 )

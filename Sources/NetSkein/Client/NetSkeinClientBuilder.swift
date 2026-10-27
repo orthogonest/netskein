@@ -17,6 +17,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit
     private var cookieJar: CookieJar?
     private var retryPolicy: RetryPolicy
+    private var middlewares: [any HTTPMiddleware]
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool
     private var logger: Logger
@@ -31,6 +32,7 @@ public struct NetSkeinClientBuilder: Sendable {
         automaticDecompression = true
         decompressionLimit = .size(10 * 1024 * 1024)
         retryPolicy = .disabled
+        middlewares = []
         acceptInvalidCertificates = false
         logger = Logger(label: LoggerLabel.identifier)
     }
@@ -118,6 +120,27 @@ extension NetSkeinClientBuilder {
         return copy
     }
 
+    /// Adds a middleware that runs for every request sent by the built client.
+    @discardableResult
+    public func using(_ middleware: some HTTPMiddleware) -> Self {
+        var copy = self
+        copy.middlewares.append(middleware)
+        return copy
+    }
+
+    /// Adds a closure as a middleware that runs for every request sent by the built client.
+    @discardableResult
+    public func using(
+        _ intercept:
+            @escaping @Sendable (
+                RequestHead,
+                MiddlewareContext,
+                HTTPMiddleware.Next
+            ) async throws -> HTTPClientResponse
+    ) -> Self {
+        using(ClosureMiddleware(intercept))
+    }
+
     @discardableResult
     public func tlsConfiguration(_ configuration: TLSConfiguration) -> Self {
         var copy = self
@@ -174,6 +197,7 @@ extension NetSkeinClientBuilder {
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
             retryPolicy: retryPolicy,
+            middlewares: middlewares,
             logger: logger
         )
     }

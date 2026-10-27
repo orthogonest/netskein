@@ -26,3 +26,9 @@ This example sends an HTTP GET request to `https://xkcd.com/info.0.json`. It lev
 This example fires an HTTP GET request to `https://apple.com/` and streams the inbound response segments piece-by-piece via a safe, modern asynchronous closure.
 
 As raw `ByteBuffer` fragments slide through the network pipe, it calculates real-time progress indicators on the fly (leveraging the server's `Content-Length` metadata). Because fragments are handled instantly inside the live closure loop, the framework maintains strict backpressure and avoids inflating the application's overall in-memory RAM usage.
+
+## [CurlLogging](./CurlLogging/CurlLogging.swift)
+
+This example registers two middlewares on the client: a closure that adds an `Authorization` header, followed by `CurlLoggingMiddleware`. It then sends a JSON `POST` to `https://httpbin.org/post`.
+
+Because middleware runs in the order it is added, the curl logger sees the request after the credential was attached and prints it as a ready-to-paste `curl` command with the `Authorization` value redacted. The logger is set to `.debug`, the level `CurlLoggingMiddleware` uses by default.
