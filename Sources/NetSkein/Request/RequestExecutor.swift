@@ -10,8 +10,8 @@ import Tracing
     import Foundation
 #endif
 
-struct RequestExecutor<Transport: HTTPTransport>: Sendable {
-    let client: NetSkeinClient<Transport>
+struct RequestExecutor: Sendable {
+    let client: NetSkeinClient
     let method: HTTPMethod
     let url: String
     let headers: HTTPHeaders

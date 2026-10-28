@@ -90,7 +90,11 @@ struct TestClientBuilderTests {
 
         var request = HTTPClientRequest(url: "https://example.com")
         request.method = .POST
-        let response = try await client.transport.execute(request, timeout: .seconds(1))
+        let response = try await client.transport.execute(
+            request,
+            timeout: .seconds(1),
+            logger: nil
+        )
         #expect(response.status == .ok)
     }
 
@@ -114,11 +118,11 @@ struct TestClientBuilderTests {
             .build()
 
         let req1 = HTTPClientRequest(url: "https://example.com/bulk1")
-        let res1 = try await client.transport.execute(req1, timeout: .seconds(1))
+        let res1 = try await client.transport.execute(req1, timeout: .seconds(1), logger: nil)
         #expect(res1.status == .ok)
 
         let req2 = HTTPClientRequest(url: "https://example.com/bulk2")
-        let res2 = try await client.transport.execute(req2, timeout: .seconds(1))
+        let res2 = try await client.transport.execute(req2, timeout: .seconds(1), logger: nil)
         #expect(res2.status == .accepted)
     }
 

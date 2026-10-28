@@ -1332,8 +1332,8 @@ extension RequestExecutorTests {
 // MARK: - Test Factory Helpers
 
 extension RequestExecutorTests {
-    private func makeExecutor<Transport: HTTPTransport>(
-        client: NetSkeinClient<Transport>,
+    private func makeExecutor(
+        client: NetSkeinClient,
         method: HTTPMethod = .GET,
         url: String,
         headers: HTTPHeaders = [:],
@@ -1342,7 +1342,7 @@ extension RequestExecutorTests {
         retryPolicy: RetryPolicy? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024,
         middlewares: [any HTTPMiddleware] = []
-    ) -> RequestExecutor<Transport> {
+    ) -> RequestExecutor {
         RequestExecutor(
             client: client,
             method: method,

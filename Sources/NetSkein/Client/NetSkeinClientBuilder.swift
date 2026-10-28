@@ -190,7 +190,7 @@ extension NetSkeinClientBuilder {
 }
 
 extension NetSkeinClientBuilder {
-    public func build() -> NetSkeinClient<HTTPClient> {
+    public func build() -> NetSkeinClient {
         var config = HTTPClient.Configuration()
 
         config.timeout = HTTPClient.Configuration.Timeout(

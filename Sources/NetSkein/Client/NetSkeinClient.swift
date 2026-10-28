@@ -3,8 +3,8 @@ import Logging
 import NIOHTTP1
 import Tracing
 
-public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
-    let transport: Transport
+public final class NetSkeinClient: Sendable {
+    let transport: any HTTPTransport
     let defaultHeaders: HTTPHeaders
     let cookieJar: CookieJar?
     let retryPolicy: RetryPolicy
@@ -14,7 +14,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
     let percentEncoder: PercentEncoder
 
     public init(
-        transport: Transport,
+        transport: some HTTPTransport,
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: CookieJar? = nil,
         retryPolicy: RetryPolicy = .disabled,
@@ -34,7 +34,7 @@ public final class NetSkeinClient<Transport: HTTPTransport>: Sendable {
     }
 }
 
-extension NetSkeinClient where Transport == HTTPClient {
+extension NetSkeinClient {
     public convenience init(
         defaultHeaders: HTTPHeaders = .init(),
         retryPolicy: RetryPolicy = .disabled
@@ -54,31 +54,31 @@ extension NetSkeinClient where Transport == HTTPClient {
 }
 
 extension NetSkeinClient {
-    public func get(_ url: String) -> NetSkeinRequest<Transport, BodyForbidden> {
+    public func get(_ url: String) -> NetSkeinRequest<BodyForbidden> {
         NetSkeinRequest(client: self, method: .GET, url: url, percentEncoder: percentEncoder)
     }
 
-    public func post(_ url: String) -> NetSkeinRequest<Transport, BodyAllowed> {
+    public func post(_ url: String) -> NetSkeinRequest<BodyAllowed> {
         NetSkeinRequest(client: self, method: .POST, url: url, percentEncoder: percentEncoder)
     }
 
-    public func put(_ url: String) -> NetSkeinRequest<Transport, BodyAllowed> {
+    public func put(_ url: String) -> NetSkeinRequest<BodyAllowed> {
         NetSkeinRequest(client: self, method: .PUT, url: url, percentEncoder: percentEncoder)
     }
 
-    public func patch(_ url: String) -> NetSkeinRequest<Transport, BodyAllowed> {
+    public func patch(_ url: String) -> NetSkeinRequest<BodyAllowed> {
         NetSkeinRequest(client: self, method: .PATCH, url: url, percentEncoder: percentEncoder)
     }
 
-    public func delete(_ url: String) -> NetSkeinRequest<Transport, BodyForbidden> {
+    public func delete(_ url: String) -> NetSkeinRequest<BodyForbidden> {
         NetSkeinRequest(client: self, method: .DELETE, url: url, percentEncoder: percentEncoder)
     }
 
     public func request(
         _ method: HTTPMethod,
         url: String
-    ) -> NetSkeinRequest<Transport, BodyAllowed> {
-        NetSkeinRequest<Transport, BodyAllowed>(
+    ) -> NetSkeinRequest<BodyAllowed> {
+        NetSkeinRequest(
             client: self,
             method: method,
             url: url,

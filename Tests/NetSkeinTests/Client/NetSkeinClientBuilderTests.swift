@@ -140,8 +140,9 @@ extension NetSkeinClientBuilderTests {
     @Test("NetSkeinClientBuilderTests: Verifies the client uses the global tracer by default")
     func testTracerDefaultsToGlobal() async throws {
         let client = NetSkeinClient.builder().build()
+        let transport = try #require(client.transport as? HTTPClient)
 
-        #expect(client.transport.tracer is NoOpTracer)
+        #expect(transport.tracer is NoOpTracer)
         #expect(client.tracer is NoOpTracer)
 
         try await client.shutdown()
@@ -150,8 +151,9 @@ extension NetSkeinClientBuilderTests {
     @Test("NetSkeinClientBuilderTests: Verifies a custom tracer is passed to the transport")
     func testCustomTracer() async throws {
         let client = NetSkeinClient.builder().tracer(InMemoryTracer()).build()
+        let transport = try #require(client.transport as? HTTPClient)
 
-        #expect(client.transport.tracer is InMemoryTracer)
+        #expect(transport.tracer is InMemoryTracer)
         #expect(client.tracer is InMemoryTracer)
 
         try await client.shutdown()
@@ -160,8 +162,9 @@ extension NetSkeinClientBuilderTests {
     @Test("NetSkeinClientBuilderTests: Verifies disabling tracing removes the tracer")
     func testDisableTracing() async throws {
         let client = NetSkeinClient.builder().disableTracing().build()
+        let transport = try #require(client.transport as? HTTPClient)
 
-        #expect(client.transport.tracer == nil)
+        #expect(transport.tracer == nil)
         #expect(client.tracer == nil)
 
         try await client.shutdown()
@@ -171,9 +174,11 @@ extension NetSkeinClientBuilderTests {
     func testLastTracingCallWins() async throws {
         let traced = NetSkeinClient.builder().disableTracing().tracer(InMemoryTracer()).build()
         let untraced = NetSkeinClient.builder().tracer(InMemoryTracer()).disableTracing().build()
+        let tracedTransport = try #require(traced.transport as? HTTPClient)
+        let untracedTransport = try #require(untraced.transport as? HTTPClient)
 
-        #expect(traced.transport.tracer is InMemoryTracer)
-        #expect(untraced.transport.tracer == nil)
+        #expect(tracedTransport.tracer is InMemoryTracer)
+        #expect(untracedTransport.tracer == nil)
 
         try await traced.shutdown()
         try await untraced.shutdown()

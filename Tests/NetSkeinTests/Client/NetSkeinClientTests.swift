@@ -73,7 +73,7 @@ extension NetSkeinClientTests {
         let getMirror = Mirror(reflecting: getBuilder)
         #expect(getMirror.descendant("method") as? HTTPMethod == .GET)
         #expect(
-            type(of: getBuilder) == NetSkeinRequest<MockHTTPClient, BodyForbidden>.self
+            type(of: getBuilder) == NetSkeinRequest<BodyForbidden>.self
         )
 
         // Validate POST: Must be BodyAllowed tags configuration
@@ -81,7 +81,7 @@ extension NetSkeinClientTests {
         let postMirror = Mirror(reflecting: postBuilder)
         #expect(postMirror.descendant("method") as? HTTPMethod == .POST)
         #expect(
-            type(of: postBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
+            type(of: postBuilder) == NetSkeinRequest<BodyAllowed>.self
         )
 
         // Validate PU: Must be BodyAllowed tags configurationT
@@ -89,7 +89,7 @@ extension NetSkeinClientTests {
         let putMirror = Mirror(reflecting: putBuilder)
         #expect(putMirror.descendant("method") as? HTTPMethod == .PUT)
         #expect(
-            type(of: putBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
+            type(of: putBuilder) == NetSkeinRequest<BodyAllowed>.self
         )
 
         // Validate PATC: Must be BodyAllowed tags configurationH
@@ -97,7 +97,7 @@ extension NetSkeinClientTests {
         let patchMirror = Mirror(reflecting: patchBuilder)
         #expect(patchMirror.descendant("method") as? HTTPMethod == .PATCH)
         #expect(
-            type(of: patchBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
+            type(of: patchBuilder) == NetSkeinRequest<BodyAllowed>.self
         )
 
         // Validate DELETE: Must be BodyForbidden tags configuration
@@ -106,7 +106,7 @@ extension NetSkeinClientTests {
         #expect(deleteMirror.descendant("method") as? HTTPMethod == .DELETE)
         #expect(
             type(of: deleteBuilder)
-                == NetSkeinRequest<MockHTTPClient, BodyForbidden>.self
+                == NetSkeinRequest<BodyForbidden>.self
         )
 
         // Validate Custom Request Mapping (e.g. OPTIONS)
@@ -114,7 +114,7 @@ extension NetSkeinClientTests {
         let customMirror = Mirror(reflecting: customBuilder)
         #expect(customMirror.descendant("method") as? HTTPMethod == .OPTIONS)
         #expect(
-            type(of: customBuilder) == NetSkeinRequest<MockHTTPClient, BodyAllowed>.self
+            type(of: customBuilder) == NetSkeinRequest<BodyAllowed>.self
         )
 
         try await client.shutdown()

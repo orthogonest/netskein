@@ -9,8 +9,8 @@ import NIOHTTP1
     import Foundation
 #endif
 
-public struct NetSkeinRequest<Transport: HTTPTransport, Body: BodyState>: Sendable {
-    private let client: NetSkeinClient<Transport>
+public struct NetSkeinRequest<Body: BodyState>: Sendable {
+    private let client: NetSkeinClient
     private var method: HTTPMethod
     private var url: String
     private var headers: HTTPHeaders
@@ -22,7 +22,7 @@ public struct NetSkeinRequest<Transport: HTTPTransport, Body: BodyState>: Sendab
     private let percentEncoder: PercentEncoder
 
     init(
-        client: NetSkeinClient<Transport>,
+        client: NetSkeinClient,
         method: HTTPMethod,
         url: String,
         headers: HTTPHeaders? = nil,
@@ -48,7 +48,7 @@ public struct NetSkeinRequest<Transport: HTTPTransport, Body: BodyState>: Sendab
 
 extension NetSkeinRequest where Body == BodyAllowed {
     public init(
-        client: NetSkeinClient<Transport>,
+        client: NetSkeinClient,
         method: HTTPMethod,
         url: String,
         headers: HTTPHeaders? = nil,
@@ -150,7 +150,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
     @discardableResult
     public func form(
         _ fields: [String: String]
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         let queryString = percentEncoder.encodeForm(fields)
         let data = Data(queryString.utf8)
         let allocator = ByteBufferAllocator()
@@ -161,7 +161,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         copy.body = .bytes(buffer)
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/x-www-form-urlencoded")
 
-        return NetSkeinRequest<Transport, BodyAttached>(
+        return NetSkeinRequest<BodyAttached>(
             client: copy.client,
             method: copy.method,
             url: copy.url,
@@ -178,7 +178,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
     @discardableResult
     public func json(
         _ bodyObject: some Encodable
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         do {
             let data = try JSONEncoder().encode(bodyObject)
             let allocator = ByteBufferAllocator()
@@ -189,7 +189,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             copy.body = .bytes(buffer)
             copy.headers.replaceOrAdd(name: "Content-Type", value: "application/json")
 
-            return NetSkeinRequest<Transport, BodyAttached>(
+            return NetSkeinRequest<BodyAttached>(
                 client: copy.client,
                 method: copy.method,
                 url: copy.url,
@@ -213,7 +213,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
     @discardableResult
     public func multipart(
         _ form: MultipartForm
-    ) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) -> NetSkeinRequest<BodyAttached> {
         var copy = self
         copy.body = .bytes(form.bytes())
         copy.headers.replaceOrAdd(
@@ -221,7 +221,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             value: "multipart/form-data; boundary=\(form.boundary)"
         )
 
-        return NetSkeinRequest<Transport, BodyAttached>(
+        return NetSkeinRequest<BodyAttached>(
             client: copy.client,
             method: copy.method,
             url: copy.url,
@@ -240,7 +240,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         atPath path: String,
         chunkSize: Int = 64 * 1024,
         onProgress: UploadProgress? = nil
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         // Resolve symlinks first: attributesOfItem describes a link itself, not its target.
         // Requiring a regular file rejects directories, FIFOs (which block on open), devices,
         // sockets and broken links before the request is sent.
@@ -270,7 +270,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         )
         copy.headers.replaceOrAdd(name: "Content-Type", value: "application/octet-stream")
 
-        return NetSkeinRequest<Transport, BodyAttached>(
+        return NetSkeinRequest<BodyAttached>(
             client: copy.client,
             method: copy.method,
             url: copy.url,
@@ -287,8 +287,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
 
 extension NetSkeinRequest where Body == BodyForbidden {
     @discardableResult
-    public func dangerouslyAllowBody() -> NetSkeinRequest<Transport, BodyAllowed> {
-        NetSkeinRequest<Transport, BodyAllowed>(
+    public func dangerouslyAllowBody() -> NetSkeinRequest<BodyAllowed> {
+        NetSkeinRequest<BodyAllowed>(
             client: self.client,
             method: self.method,
             url: self.url,
@@ -311,7 +311,7 @@ extension NetSkeinRequest where Body == BodyForbidden {
     )
     public func form(
         _ fields: [String: String]
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 
@@ -322,7 +322,7 @@ extension NetSkeinRequest where Body == BodyForbidden {
     )
     public func json(
         _ bodyObject: some Encodable
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 
@@ -333,7 +333,7 @@ extension NetSkeinRequest where Body == BodyForbidden {
     )
     public func multipart(
         _ form: MultipartForm
-    ) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 
@@ -346,7 +346,7 @@ extension NetSkeinRequest where Body == BodyForbidden {
         atPath path: String,
         chunkSize: Int = 64 * 1024,
         onProgress: UploadProgress? = nil
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 }
@@ -360,7 +360,7 @@ extension NetSkeinRequest where Body == BodyAttached {
     )
     public func form(
         _ fields: [String: String]
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 
@@ -372,7 +372,7 @@ extension NetSkeinRequest where Body == BodyAttached {
     )
     public func json(
         _ bodyObject: some Encodable
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 
@@ -384,7 +384,7 @@ extension NetSkeinRequest where Body == BodyAttached {
     )
     public func multipart(
         _ form: MultipartForm
-    ) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 
@@ -399,13 +399,13 @@ extension NetSkeinRequest where Body == BodyAttached {
         chunkSize: Int = 64 * 1024,
         onProgress: UploadProgress? = nil
 
-    ) throws(NetSkeinError) -> NetSkeinRequest<Transport, BodyAttached> {
+    ) throws(NetSkeinError) -> NetSkeinRequest<BodyAttached> {
         fatalError("Unavailable at compile time")
     }
 }
 
 extension NetSkeinRequest {
-    private var executor: RequestExecutor<Transport> {
+    private var executor: RequestExecutor {
         RequestExecutor(
             client: client,
             method: method,
