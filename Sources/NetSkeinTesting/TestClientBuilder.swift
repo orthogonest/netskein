@@ -107,7 +107,7 @@ extension TestClientBuilder {
 }
 
 extension TestClientBuilder {
-    public func build() -> NetSkeinClient<MockHTTPClient> {
+    public func build() -> NetSkeinClient {
         let transport = MockHTTPClient(stubs: stubs, onShutdown: onShutdown)
         return NetSkeinClient(
             transport: transport,
@@ -121,7 +121,7 @@ extension TestClientBuilder {
     }
 }
 
-extension NetSkeinClient where Transport == MockHTTPClient {
+extension NetSkeinClient {
     public static func testing() -> TestClientBuilder {
         TestClientBuilder()
     }

@@ -22,7 +22,7 @@ struct NetSkeinRequestTests {
         )
         let client = NetSkeinClient.testing().addStub(stub).build()
 
-        let builder = NetSkeinRequest<MockHTTPClient, BodyForbidden>(
+        let builder = NetSkeinRequest<BodyForbidden>(
             client: client,
             method: .GET,
             url: "https://api.example.com"
