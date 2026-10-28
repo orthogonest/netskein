@@ -232,6 +232,7 @@ extension RequestExecutor {
         } catch {
             let failure = mapError(error, context, action: operation.action)
             guard
+                !operation.hasDeliveredData,
                 await shouldRetry(
                     after: context,
                     status: response?.status,
@@ -387,6 +388,12 @@ private protocol RequestOperation {
     /// the caller yet, so the response can simply be thrown away.
     var isBuffered: Bool { get }
 
+    /// Whether the caller has already received part of a response.
+    ///
+    /// A failure after that is never retried: the next attempt would start the response from
+    /// the beginning and hand the caller the same data twice.
+    var hasDeliveredData: Bool { get }
+
     /// Runs before every attempt: describes it in logs and adds any headers it needs.
     mutating func prepareAttempt() -> AttemptSetup
 
@@ -407,6 +414,7 @@ private struct SendOperation: RequestOperation {
     var name: String { "send" }
     var action: String { "Network request" }
     var isBuffered: Bool { true }
+    var hasDeliveredData: Bool { false }
 
     func prepareAttempt() -> AttemptSetup {
         AttemptSetup(description: "outbound network request")
@@ -424,12 +432,13 @@ private struct StreamOperation: RequestOperation {
     var name: String { "stream" }
     var action: String { "Streaming request" }
     var isBuffered: Bool { false }
+    private(set) var hasDeliveredData = false
 
     func prepareAttempt() -> AttemptSetup {
         AttemptSetup(description: "outbound streaming request")
     }
 
-    func handle(
+    mutating func handle(
         _ response: HTTPClientResponse,
         logger: Logger
     ) async throws -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
@@ -444,6 +453,7 @@ private struct StreamOperation: RequestOperation {
         for try await buffer in response.body {
             try checkCancellation()
             receivedBytes += Int64(buffer.readableBytes)
+            hasDeliveredData = true
             do {
                 try await onChunk(buffer, receivedBytes, expectedBytes)
             } catch {
@@ -476,6 +486,8 @@ private struct DownloadOperation: RequestOperation {
     var name: String { "download" }
     var action: String { "Streaming download" }
     var isBuffered: Bool { false }
+    /// A retry rewrites the file or resumes it where it stopped, so nothing is duplicated.
+    var hasDeliveredData: Bool { false }
 
     /// How much of the file already exists before the current attempt.
     private var existingBytes: Int64 = 0
