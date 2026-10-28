@@ -22,19 +22,23 @@ struct RequestExecutor<Transport: HTTPTransport>: Sendable {
     let middlewares: [any HTTPMiddleware]
 }
 
-extension RequestExecutor {
-    private var activeRetryPolicy: RetryPolicy {
-        retryPolicy ?? client.retryPolicy
-    }
+// MARK: - Request Preparation
 
-    private func checkCancellation() throws(NetSkeinError) {
-        if Task.isCancelled {
-            throw .custom(
-                kind: .networkFailure,
-                message: "Task was cancelled before the request could complete.",
-                underlyingError: CancellationError()
-            )
+extension RequestExecutor {
+    private func prepareRequest(requestID: String, extraHeaders: HTTPHeaders) -> RequestHead {
+        var activeHeaders = headers
+
+        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
+
+        if let cookieValue = getCookie() {
+            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
         }
+
+        for (name, value) in extraHeaders {
+            activeHeaders.replaceOrAdd(name: name, value: value)
+        }
+
+        return RequestHead(method: method, url: url, headers: activeHeaders)
     }
 
     private func getCookie() -> String? {
@@ -63,62 +67,41 @@ extension RequestExecutor {
             jar.setCookie(host: host, name: name, value: value)
         }
     }
+}
 
-    private func prepareRequest(
+// MARK: - Attempt Execution
+
+extension RequestExecutor {
+    /// Starts an attempt and logs that it is being initiated or retried.
+    private func beginAttempt(
+        _ number: Int,
         requestID: String,
-        headerModifier: ((inout HTTPHeaders) -> Void)? = nil
-    ) -> RequestHead {
-        var activeHeaders = headers
-
-        activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
-
-        if let cookieValue = getCookie() {
-            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
-        }
-
-        headerModifier?(&activeHeaders)
-
-        return RequestHead(method: method, url: url, headers: activeHeaders)
-    }
-
-    private func prepareLogger(
-        requestID: String,
-        attempt: Int,
-        action: String
-    ) -> Logger {
+        description: String
+    ) -> MiddlewareContext {
         var logger = client.logger
         logger[metadataKey: "request_id"] = .string(requestID)
         logger[metadataKey: "http_method"] = .string(method.rawValue)
         logger[metadataKey: "url"] = .string(url)
-        if attempt > 0 {
-            logger[metadataKey: "retry_attempt"] = .string("\(attempt)")
+        if number > 0 {
+            logger[metadataKey: "retry_attempt"] = .string("\(number)")
         }
 
-        logger.info(attempt == 0 ? "Initiating \(action)" : "Retrying \(action)")
-        return logger
-    }
+        logger.info(number == 0 ? "Initiating \(description)" : "Retrying \(description)")
 
-    private func execute(
-        _ head: RequestHead,
-        requestID: String,
-        attempt: Int,
-        action: String,
-        logger: Logger,
-        span: (any Span)?
-    ) async throws -> HTTPClientResponse {
-        span?.attributes["netskein.request_id"] = requestID
-        if attempt > 0 {
-            span?.attributes["http.request.resend_count"] = attempt
-        }
-
-        let context = MiddlewareContext(
-            attempt: attempt,
+        return MiddlewareContext(
+            attempt: number,
             requestID: requestID,
             logger: logger,
             body: body.bodyDescription
         )
+    }
 
-        let response = try await MiddlewareChain.run(
+    private func execute(
+        _ head: RequestHead,
+        _ context: MiddlewareContext,
+        action: String
+    ) async throws -> HTTPClientResponse {
+        try await MiddlewareChain.run(
             head,
             through: middlewares,
             context: context
@@ -132,29 +115,25 @@ extension RequestExecutor {
                 return try await client.transport.execute(
                     request,
                     timeout: timeout ?? .seconds(30),
-                    logger: logger
+                    logger: context.logger
                 )
             } catch {
-                throw mapError(error, requestID: requestID, action: action, logger: logger)
+                throw mapError(error, context, action: action)
             }
         }
-
-        span?.attributes["http.response.status_code"] = Int(response.status.code)
-        return response
     }
 
     private func recordResponse(
         _ response: HTTPClientResponse,
-        requestID: String,
-        startTime: DispatchTime,
-        logger: Logger,
+        _ context: MiddlewareContext,
+        startedAt startTime: DispatchTime
     ) {
         let endTime = DispatchTime.now()
         let duration =
             Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / Nanoseconds.toSeconds
-        let activeResponseID = response.headers["X-Request-ID"].first ?? requestID
+        let activeResponseID = response.headers["X-Request-ID"].first ?? context.requestID
 
-        logger.info(
+        context.logger.info(
             "Response received",
             metadata: [
                 "request_id": .string(activeResponseID),
@@ -169,17 +148,16 @@ extension RequestExecutor {
 
     private func mapError(
         _ error: any Error,
-        requestID: String,
-        action: String,
-        logger: Logger
+        _ context: MiddlewareContext,
+        action: String
     ) -> NetSkeinError {
         if let netSkeinError = error as? NetSkeinError {
             return netSkeinError
         }
-        logger.error(
+        context.logger.error(
             "\(action) failed",
             metadata: [
-                "request_id": .string(requestID),
+                "request_id": .string(context.requestID),
                 "error_description": .string(error.localizedDescription),
             ]
         )
@@ -189,13 +167,128 @@ extension RequestExecutor {
             underlyingError: error
         )
     }
+}
 
-    private func sleepBetweenRetries(
-        policy: RetryPolicy,
-        attempt: Int,
+// MARK: - Retry Loop
+
+extension RequestExecutor {
+    private var activeRetryPolicy: RetryPolicy {
+        retryPolicy ?? client.retryPolicy
+    }
+
+    /// Sends the request until `operation` succeeds or the retry policy stops, all inside one
+    /// span.
+    ///
+    /// Each attempt runs in this order: `operation.prepareAttempt()`, then the request is sent
+    /// through the middleware and transport, then `operation.handle` turns the response into
+    /// the result, then the retry policy decides whether to go again. Anything thrown along the
+    /// way counts as a failed attempt.
+    private func run<Operation: RequestOperation>(
+        _ operation: Operation
+    ) async throws(NetSkeinError) -> Operation.Output {
+        var operation = operation
+        let requestID = UUID().uuidString
+
+        return try await traced(operation.name) { span throws(NetSkeinError) in
+            span?.attributes["netskein.request_id"] = requestID
+            return try await makeAttempt(0, of: &operation, requestID: requestID, span: span)
+        }
+    }
+
+    /// Makes attempt `number`, then either finishes the call or backs off and makes the next one.
+    private func makeAttempt<Operation: RequestOperation>(
+        _ number: Int,
+        of operation: inout Operation,
+        requestID: String,
+        span: (any Span)?
+    ) async throws(NetSkeinError) -> Operation.Output {
+        try checkCancellation()
+
+        let setup = operation.prepareAttempt()
+        let head = prepareRequest(requestID: requestID, extraHeaders: setup.extraHeaders)
+        let context = beginAttempt(number, requestID: requestID, description: setup.description)
+        if number > 0 {
+            span?.attributes["http.request.resend_count"] = number
+        }
+
+        let startTime = DispatchTime.now()
+        var response: HTTPClientResponse?
+        do {
+            let received = try await execute(head, context, action: operation.action)
+            response = received
+            span?.attributes["http.response.status_code"] = Int(received.status.code)
+            recordResponse(received, context, startedAt: startTime)
+
+            let result = try await operation.handle(received, logger: context.logger)
+            guard
+                operation.isBuffered,
+                await shouldRetry(
+                    after: context,
+                    status: received.status,
+                    headers: received.headers,
+                    error: nil
+                )
+            else { return result }
+        } catch {
+            let failure = mapError(error, context, action: operation.action)
+            guard
+                await shouldRetry(
+                    after: context,
+                    status: response?.status,
+                    headers: response?.headers,
+                    error: failure
+                )
+            else { throw failure }
+        }
+
+        try await backOff(before: number + 1, responseHeaders: response?.headers)
+        return try await makeAttempt(number + 1, of: &operation, requestID: requestID, span: span)
+    }
+
+    /// Asks the retry policy whether the attempt described by `context` should be followed by
+    /// another one.
+    private func shouldRetry(
+        after context: MiddlewareContext,
+        status: HTTPResponseStatus?,
+        headers: HTTPHeaders?,
+        error: NetSkeinError?
+    ) async -> Bool {
+        let policy = activeRetryPolicy
+        let nextNumber = context.attempt + 1
+
+        let retryContext = RetryContext(
+            attempt: nextNumber,
+            maxRetries: policy.maxRetries,
+            method: method,
+            url: url,
+            responseStatus: status,
+            responseHeaders: headers,
+            error: error
+        )
+
+        guard await policy.evaluator(retryContext), nextNumber <= policy.maxRetries else {
+            return false
+        }
+
+        context.logger.warning(
+            "Request eligible for retry. Backing off before attempt \(nextNumber + 1)",
+            metadata: [
+                "attempt": .string("\(nextNumber)"),
+                "max_retries": .string("\(policy.maxRetries)"),
+            ]
+        )
+
+        return true
+    }
+
+    /// Waits before attempt `number`, as long as the policy's backoff or a `Retry-After`
+    /// header asks, whichever is longer.
+    private func backOff(
+        before number: Int,
         responseHeaders: HTTPHeaders?
     ) async throws(NetSkeinError) {
-        var delay = policy.backoff.delay(forAttempt: attempt)
+        let policy = activeRetryPolicy
+        var delay = policy.backoff.delay(forAttempt: number)
 
         if policy.respectRetryAfterHeader,
             let retryAfterDelay = RetryAfterParser.parseDelay(from: responseHeaders),
@@ -216,62 +309,275 @@ extension RequestExecutor {
             )
         }
     }
+}
 
-    private func evaluateRetry(
-        policy: RetryPolicy,
-        attempt: inout Int,
-        status: HTTPResponseStatus?,
-        headers: HTTPHeaders?,
-        error: NetSkeinError?,
-        logger: Logger
-    ) async throws(NetSkeinError) -> Bool {
-        attempt += 1
+// MARK: - Tracing
 
-        let context = RetryContext(
-            attempt: attempt,
-            maxRetries: policy.maxRetries,
-            method: method,
-            url: url,
-            responseStatus: status,
-            responseHeaders: headers,
-            error: error
-        )
+extension RequestExecutor {
+    /// Runs one call, including all of its retry attempts, inside a span, so the transport's
+    /// per-attempt spans are grouped under it and the span covers backoff and body transfer.
+    private func traced<Success>(
+        _ operation: String,
+        _ body: ((any Span)?) async throws(NetSkeinError) -> Success
+    ) async throws(NetSkeinError) -> Success {
+        guard let tracer = client.tracer else { return try await body(nil) }
 
-        let shouldRetry = await policy.evaluator(context)
+        let span = tracer.startSpan("NetSkein \(method.rawValue)", ofKind: .internal)
+        defer { span.end() }
+        span.attributes["http.request.method"] = method.rawValue
+        span.attributes["netskein.operation"] = operation
 
-        if shouldRetry && attempt <= policy.maxRetries {
-            logger.warning(
-                "Request eligible for retry. Backing off before attempt \(attempt + 1)",
-                metadata: [
-                    "attempt": .string("\(attempt)"),
-                    "max_retries": .string("\(policy.maxRetries)"),
-                ]
-            )
-            try await sleepBetweenRetries(
-                policy: policy,
-                attempt: attempt,
-                responseHeaders: headers
-            )
-            return true
+        // Make the span current, so the transport's spans become its children
+        let result = await ServiceContext.$current.withValue(span.context) {
+            await Result { () async throws(NetSkeinError) in try await body(span) }
         }
+        if case let .failure(error) = result {
+            span.recordError(error)
+            span.setStatus(SpanStatus(code: .error))
+        }
+        return try result.get()
+    }
+}
 
-        return false
+// MARK: - Entry Points
+
+extension RequestExecutor {
+    func send() async throws(NetSkeinError) -> NetSkeinResponse {
+        try await run(SendOperation(maxResponseBytes: maxResponseBytes))
     }
 
-    private func writeResponseBodyToFile(
-        response: HTTPClientResponse,
-        path: String,
-        existingBytes: Int64,
-        logger: Logger,
+    func stream(
+        _ onChunk: @escaping ChunkHandler
+    ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
+        try await run(StreamOperation(onChunk: onChunk))
+    }
+
+    func download(
+        to path: String,
+        resumption: DownloadResumption = .disabled,
         onProgress: DownloadProgress? = nil
+    ) async throws(NetSkeinError) {
+        let operation = DownloadOperation(
+            path: path,
+            resumption: resumption,
+            canResume: method == .GET,
+            onProgress: onProgress
+        )
+        operation.discardStaleFile()
+        try await run(operation)
+    }
+}
+
+// MARK: - Operations
+
+/// What one kind of call does with each attempt's response. ``RequestExecutor`` does everything
+/// else: building the request, middleware, transport, retries, backoff and tracing.
+private protocol RequestOperation {
+    associatedtype Output
+
+    /// Names the call in spans, for example `send`.
+    var name: String { get }
+
+    /// Names the call in error logs and error messages, for example `Network request`.
+    var action: String { get }
+
+    /// Whether the whole response is collected before the caller sees any of it.
+    ///
+    /// Only a buffered call can retry after its response was handled: nothing has reached
+    /// the caller yet, so the response can simply be thrown away.
+    var isBuffered: Bool { get }
+
+    /// Runs before every attempt: describes it in logs and adds any headers it needs.
+    mutating func prepareAttempt() -> AttemptSetup
+
+    /// Turns an attempt's response into the call's result. Throwing counts as a failed attempt.
+    mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output
+}
+
+/// How one attempt is described in logs, and any headers it adds to the request.
+private struct AttemptSetup {
+    var description: String
+    var extraHeaders: HTTPHeaders = [:]
+}
+
+/// Collects the whole response body in memory.
+private struct SendOperation: RequestOperation {
+    let maxResponseBytes: Int
+
+    var name: String { "send" }
+    var action: String { "Network request" }
+    var isBuffered: Bool { true }
+
+    func prepareAttempt() -> AttemptSetup {
+        AttemptSetup(description: "outbound network request")
+    }
+
+    func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> NetSkeinResponse {
+        try await NetSkeinResponse(underlyingResponse: response, maxBytes: maxResponseBytes)
+    }
+}
+
+/// Hands each chunk of a successful response to the caller as it arrives.
+private struct StreamOperation: RequestOperation {
+    let onChunk: ChunkHandler
+
+    var name: String { "stream" }
+    var action: String { "Streaming request" }
+    var isBuffered: Bool { false }
+
+    func prepareAttempt() -> AttemptSetup {
+        AttemptSetup(description: "outbound streaming request")
+    }
+
+    func handle(
+        _ response: HTTPClientResponse,
+        logger: Logger
+    ) async throws -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
+        guard response.status.code >= 200 && response.status.code < 300 else {
+            throw NetSkeinError.badStatus(response.status)
+        }
+
+        let expectedBytes = response.headers.first(name: "Content-Length")
+            .flatMap(Int64.init)
+        var receivedBytes: Int64 = 0
+
+        for try await buffer in response.body {
+            try checkCancellation()
+            receivedBytes += Int64(buffer.readableBytes)
+            do {
+                try await onChunk(buffer, receivedBytes, expectedBytes)
+            } catch {
+                throw NetSkeinError.custom(
+                    kind: .clientError,
+                    message:
+                        "Streaming chunk consumer callback failed: \(error.localizedDescription)",
+                    underlyingError: error
+                )
+            }
+        }
+
+        logger.info(
+            "Finished streaming response body. Total bytes received: \(receivedBytes)"
+        )
+
+        return (response.status, response.headers)
+    }
+}
+
+/// Writes a successful response to a file, resuming a partial file with `Range` requests
+/// when the caller allows it.
+private struct DownloadOperation: RequestOperation {
+    let path: String
+    let resumption: DownloadResumption
+    /// Only `GET` requests can be resumed with `Range`.
+    let canResume: Bool
+    let onProgress: DownloadProgress?
+
+    var name: String { "download" }
+    var action: String { "Streaming download" }
+    var isBuffered: Bool { false }
+
+    /// How much of the file already exists before the current attempt.
+    private var existingBytes: Int64 = 0
+    /// The server's `ETag` or `Last-Modified`, sent as `If-Range` when resuming.
+    private var validator: String?
+
+    init(
+        path: String,
+        resumption: DownloadResumption,
+        canResume: Bool,
+        onProgress: DownloadProgress?
+    ) {
+        self.path = path
+        self.resumption = resumption
+        self.canResume = canResume
+        self.onProgress = onProgress
+        self.validator = resumption.validator
+    }
+}
+
+extension DownloadOperation {
+    /// Empties a file left by an earlier download unless the caller asked to resume it.
+    func discardStaleFile() {
+        guard
+            resumption == .disabled || resumption == .onRetry,
+            FileManager.default.fileExists(atPath: path)
+        else { return }
+        FileManager.default.createFile(atPath: path, contents: nil)
+    }
+
+    /// Measures what is already on disk and, when possible, asks only for the missing bytes.
+    mutating func prepareAttempt() -> AttemptSetup {
+        existingBytes = resumableFileSize()
+
+        guard existingBytes > 0 && canResume else {
+            return AttemptSetup(description: "file download")
+        }
+
+        var headers: HTTPHeaders = ["Range": "bytes=\(existingBytes)-"]
+        if let validator {
+            headers.add(name: "If-Range", value: validator)
+        }
+
+        return AttemptSetup(
+            description: "download resumption from byte \(existingBytes)",
+            extraHeaders: headers
+        )
+    }
+
+    /// Remembers the server's validator and rejects responses that cannot be written.
+    private mutating func accept(
+        _ response: HTTPClientResponse,
+        logger: Logger
+    ) throws(NetSkeinError) {
+        if let etag = response.headers.first(name: "ETag") {
+            validator = etag
+        } else if let lastModified = response.headers.first(name: "Last-Modified") {
+            validator = lastModified
+        }
+
+        // 416 Range Not Satisfiable: start the file over so the retry downloads it in full
+        if response.status == .rangeNotSatisfiable {
+            logger.warning("416 Range Not Satisfiable received. Truncating file to byte 0.")
+            FileManager.default.createFile(atPath: path, contents: nil)
+            validator = nil
+            throw .badStatus(response.status)
+        }
+
+        guard response.status.code >= 200 && response.status.code < 300 else {
+            throw .badStatus(response.status)
+        }
+    }
+
+    private func resumableFileSize() -> Int64 {
+        guard
+            resumption != .disabled,
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+            let size = attributes[.size] as? Int64
+        else { return 0 }
+        return size
+    }
+
+    /// Remembers the server's validator, rejects responses that cannot be written, and writes
+    /// the rest.
+    mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws {
+        try accept(response, logger: logger)
+        try await writeBody(of: response, logger: logger)
+    }
+
+    /// Writes the body to the file: appending after a `206 Partial Content`, otherwise
+    /// starting the file over.
+    private func writeBody(
+        of response: HTTPClientResponse,
+        logger: Logger
     ) async throws(NetSkeinError) {
         let fileHandle: FileHandle
         var receivedBytes: Int64
         let totalExpectedBytes: Int64?
 
         do {
+            // Server accepted Range -> Append to existing bytes
             if response.status == .partialContent {
-                // Server accepted Range -> Append to existing bytes
                 guard let handle = FileHandle(forWritingAtPath: path) else {
                     throw NetSkeinError.custom(
                         kind: .ioFailure,
@@ -288,8 +594,9 @@ extension RequestExecutor {
                 let contentLength = response.headers.first(name: "Content-Length")
                     .flatMap(Int64.init)
                 totalExpectedBytes = parsedTotal ?? contentLength.map { $0 + existingBytes }
-            } else {
-                // Server returned 200 OK -> Truncate/create fresh from byte 0
+            }
+            // Server returned 200 OK -> Truncate/create fresh from byte 0
+            else {
                 guard
                     FileManager.default.createFile(atPath: path, contents: nil),
                     let handle = FileHandle(forWritingAtPath: path)
@@ -364,343 +671,14 @@ extension RequestExecutor {
     }
 }
 
-// MARK: - Tracing
+// MARK: - Cancellation
 
-extension RequestExecutor {
-    /// Runs one call, including all of its retry attempts, inside a span, so the transport's
-    /// per-attempt spans are grouped under it and the span covers backoff and body transfer.
-    private func traced<Success>(
-        _ operation: String,
-        _ body: ((any Span)?) async throws(NetSkeinError) -> Success
-    ) async throws(NetSkeinError) -> Success {
-        guard let tracer = client.tracer else { return try await body(nil) }
-
-        let span = tracer.startSpan("NetSkein \(method.rawValue)", ofKind: .internal)
-        defer { span.end() }
-        span.attributes["http.request.method"] = method.rawValue
-        span.attributes["netskein.operation"] = operation
-
-        // Make the span current, so the transport's spans become its children
-        let result = await ServiceContext.$current.withValue(span.context) {
-            await Result { () async throws(NetSkeinError) in try await body(span) }
-        }
-        if case let .failure(error) = result {
-            span.recordError(error)
-            span.setStatus(SpanStatus(code: .error))
-        }
-        return try result.get()
-    }
-}
-
-// MARK: Buffered Execution
-
-extension RequestExecutor {
-    func send() async throws(NetSkeinError) -> NetSkeinResponse {
-        try await traced("send") { span throws(NetSkeinError) in
-            try await send(span: span)
-        }
-    }
-
-    private func send(span: (any Span)?) async throws(NetSkeinError) -> NetSkeinResponse {
-        var attempt = 0
-        var outcome: Result<NetSkeinResponse, NetSkeinError>
-        var shouldRetry: Bool
-        let requestID = UUID().uuidString
-
-        repeat {
-            try checkCancellation()
-
-            let head = prepareRequest(requestID: requestID)
-            let logger = prepareLogger(
-                requestID: requestID,
-                attempt: attempt,
-                action: "outbound network request"
-            )
-
-            let startTime: DispatchTime = .now()
-            var rawResponse: HTTPClientResponse?
-
-            do {
-                let response = try await execute(
-                    head,
-                    requestID: requestID,
-                    attempt: attempt,
-                    action: "Network request",
-                    logger: logger,
-                    span: span
-                )
-                rawResponse = response
-                recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)
-
-                let netSkeinResponse = try await NetSkeinResponse(
-                    underlyingResponse: response,
-                    maxBytes: maxResponseBytes
-                )
-
-                outcome = .success(netSkeinResponse)
-                shouldRetry = try await evaluateRetry(
-                    policy: activeRetryPolicy,
-                    attempt: &attempt,
-                    status: netSkeinResponse.status,
-                    headers: netSkeinResponse.headers,
-                    error: nil,
-                    logger: logger
-                )
-            } catch {
-                let mappedError = mapError(
-                    error,
-                    requestID: requestID,
-                    action: "Network request",
-                    logger: logger
-                )
-
-                outcome = .failure(mappedError)
-                shouldRetry = try await evaluateRetry(
-                    policy: activeRetryPolicy,
-                    attempt: &attempt,
-                    status: rawResponse?.status,
-                    headers: rawResponse?.headers,
-                    error: mappedError,
-                    logger: logger
-                )
-            }
-        } while shouldRetry
-
-        return try outcome.get()
-    }
-}
-
-// MARK: - Streaming Execution
-
-extension RequestExecutor {
-    func stream(
-        _ onChunk: ChunkHandler
-    ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
-        try await traced("stream") { span throws(NetSkeinError) in
-            try await stream(onChunk, span: span)
-        }
-    }
-
-    private func stream(
-        _ onChunk: ChunkHandler,
-        span: (any Span)?
-    ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
-        var attempt = 0
-        var outcome: Result<(status: HTTPResponseStatus, headers: HTTPHeaders), NetSkeinError>
-        var shouldRetry: Bool
-        let requestID = UUID().uuidString
-
-        repeat {
-            try checkCancellation()
-
-            let head = prepareRequest(requestID: requestID)
-            let logger = prepareLogger(
-                requestID: requestID,
-                attempt: attempt,
-                action: "outbound streaming request"
-            )
-
-            let startTime: DispatchTime = .now()
-            var rawResponse: HTTPClientResponse?
-
-            do {
-                let response = try await execute(
-                    head,
-                    requestID: requestID,
-                    attempt: attempt,
-                    action: "Streaming request",
-                    logger: logger,
-                    span: span
-                )
-                rawResponse = response
-                recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)
-
-                guard response.status.code >= 200 && response.status.code < 300 else {
-                    throw NetSkeinError.badStatus(response.status)
-                }
-
-                let expectedBytes = response.headers.first(name: "Content-Length")
-                    .flatMap(Int64.init)
-                var receivedBytes: Int64 = 0
-
-                for try await buffer in response.body {
-                    try checkCancellation()
-                    receivedBytes += Int64(buffer.readableBytes)
-                    do {
-                        try await onChunk(buffer, receivedBytes, expectedBytes)
-                    } catch {
-                        throw NetSkeinError.custom(
-                            kind: .clientError,
-                            message:
-                                "Streaming chunk consumer callback failed: \(error.localizedDescription)",
-                            underlyingError: error
-                        )
-                    }
-                }
-
-                logger.info(
-                    "Finished streaming response body. Total bytes received: \(receivedBytes)"
-                )
-
-                outcome = .success((response.status, response.headers))
-                shouldRetry = false
-            } catch {
-                let mappedError = mapError(
-                    error,
-                    requestID: requestID,
-                    action: "Streaming request",
-                    logger: logger
-                )
-
-                outcome = .failure(mappedError)
-                shouldRetry = try await evaluateRetry(
-                    policy: activeRetryPolicy,
-                    attempt: &attempt,
-                    status: rawResponse?.status,
-                    headers: rawResponse?.headers,
-                    error: mappedError,
-                    logger: logger
-                )
-            }
-        } while shouldRetry
-
-        return try outcome.get()
-    }
-}
-
-// MARK: - File Download Execution
-
-extension RequestExecutor {
-    func download(
-        to path: String,
-        resumption: DownloadResumption = .disabled,
-        onProgress: DownloadProgress? = nil
-    ) async throws(NetSkeinError) {
-        try await traced("download") { span throws(NetSkeinError) in
-            try await download(
-                to: path,
-                resumption: resumption,
-                onProgress: onProgress,
-                span: span
-            )
-        }
-    }
-
-    private func download(
-        to path: String,
-        resumption: DownloadResumption,
-        onProgress: DownloadProgress?,
-        span: (any Span)?
-    ) async throws(NetSkeinError) {
-        var attempt = 0
-        var activeValidator = resumption.validator
-        var outcome: Result<Void, NetSkeinError>
-        var shouldRetry: Bool
-        let requestID = UUID().uuidString
-
-        if resumption == .disabled || resumption == .onRetry {
-            if FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
-            }
-        }
-
-        repeat {
-            try checkCancellation()
-
-            // Inspect existing file size if resumption is permitted
-            let existingBytes: Int64
-            if resumption != .disabled,
-                let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-                let size = attributes[.size] as? Int64
-            {
-                existingBytes = size
-            } else {
-                existingBytes = 0
-            }
-
-            // Inject Range & If-Range headers only when applicable (GET requests with existing bytes)
-            let isResuming = existingBytes > 0 && method == .GET
-
-            let head = prepareRequest(requestID: requestID) { reqHeaders in
-                if isResuming {
-                    reqHeaders.replaceOrAdd(name: "Range", value: "bytes=\(existingBytes)-")
-                    if let activeValidator {
-                        reqHeaders.replaceOrAdd(name: "If-Range", value: activeValidator)
-                    }
-                }
-            }
-
-            let logger = prepareLogger(
-                requestID: requestID,
-                attempt: attempt,
-                action: isResuming
-                    ? "download resumption from byte \(existingBytes)"
-                    : "file download"
-            )
-
-            let startTime = DispatchTime.now()
-            var rawResponse: HTTPClientResponse?
-
-            do {
-                let response = try await execute(
-                    head,
-                    requestID: requestID,
-                    attempt: attempt,
-                    action: "Streaming download",
-                    logger: logger,
-                    span: span
-                )
-                rawResponse = response
-                recordResponse(response, requestID: requestID, startTime: startTime, logger: logger)
-
-                if let etag = response.headers.first(name: "ETag") {
-                    activeValidator = etag
-                } else if let lastModified = response.headers.first(name: "Last-Modified") {
-                    activeValidator = lastModified
-                }
-
-                // Handle 416 Range Not Satisfiable: Reset file to 0 and retry cleanly
-                if response.status == .rangeNotSatisfiable {
-                    logger.warning("416 Range Not Satisfiable received. Truncating file to byte 0.")
-                    FileManager.default.createFile(atPath: path, contents: nil)
-                    activeValidator = nil
-                    throw NetSkeinError.badStatus(response.status)
-                }
-
-                guard response.status.code >= 200 && response.status.code < 300 else {
-                    throw NetSkeinError.badStatus(response.status)
-                }
-
-                try await writeResponseBodyToFile(
-                    response: response,
-                    path: path,
-                    existingBytes: existingBytes,
-                    logger: logger,
-                    onProgress: onProgress
-                )
-
-                outcome = .success(())
-                shouldRetry = false
-            } catch {
-                let mappedError = mapError(
-                    error,
-                    requestID: requestID,
-                    action: "Streaming download",
-                    logger: logger
-                )
-
-                outcome = .failure(mappedError)
-                shouldRetry = try await evaluateRetry(
-                    policy: activeRetryPolicy,
-                    attempt: &attempt,
-                    status: rawResponse?.status,
-                    headers: rawResponse?.headers,
-                    error: mappedError,
-                    logger: logger
-                )
-            }
-        } while shouldRetry
-
-        try outcome.get()
+private func checkCancellation() throws(NetSkeinError) {
+    if Task.isCancelled {
+        throw .custom(
+            kind: .networkFailure,
+            message: "Task was cancelled before the request could complete.",
+            underlyingError: CancellationError()
+        )
     }
 }
