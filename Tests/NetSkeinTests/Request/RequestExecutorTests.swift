@@ -355,6 +355,64 @@ extension RequestExecutorTests {
         let result = try await executor.stream { _, _, _ in }
         #expect(result.status == .ok)
     }
+
+    @Test(
+        "RequestExecutorTests: Verifies streaming is not retried once a chunk reached the caller"
+    )
+    func testStreamingFailureAfterDeliveryIsNotRetried() async throws {
+        let transport = StreamingHTTPClient(
+            status: .ok,
+            headers: [:],
+            chunks: [ByteBuffer(string: "chunk-1;"), ByteBuffer(string: "chunk-2;")],
+            failure: MockStubOutageError()
+        )
+        let client = NetSkeinClient(transport: transport, logger: Logger(label: LoggerLabel.test))
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/stream-drop",
+            retryPolicy: .standard(maxRetries: 2, backoff: .immediate)
+        )
+        let received = NIOLockedValueBox("")
+
+        do {
+            _ = try await executor.stream { chunk, _, _ in
+                received.withLockedValue { $0 += String(buffer: chunk) }
+            }
+            Issue.record("Expected the stream to fail when the body drops mid-way")
+        } catch {
+            #expect(error.kind == .networkFailure)
+        }
+
+        #expect(transport.requestCount.withLockedValue { $0 } == 1)
+        #expect(received.withLockedValue { $0 } == "chunk-1;chunk-2;")
+    }
+
+    @Test(
+        "RequestExecutorTests: Verifies streaming is retried when the body fails before any chunk"
+    )
+    func testStreamingFailureBeforeDeliveryIsRetried() async throws {
+        let transport = StreamingHTTPClient(
+            status: .ok,
+            headers: [:],
+            chunks: [],
+            failure: MockStubOutageError()
+        )
+        let client = NetSkeinClient(transport: transport, logger: Logger(label: LoggerLabel.test))
+        let executor = makeExecutor(
+            client: client,
+            url: "https://api.example.com/stream-drop",
+            retryPolicy: .standard(maxRetries: 2, backoff: .immediate)
+        )
+
+        do {
+            _ = try await executor.stream { _, _, _ in }
+            Issue.record("Expected the stream to fail on every attempt")
+        } catch {
+            #expect(error.kind == .networkFailure)
+        }
+
+        #expect(transport.requestCount.withLockedValue { $0 } == 3)
+    }
 }
 
 // MARK: - File Download Execution
@@ -1336,12 +1394,14 @@ private struct StreamingHTTPClient: HTTPTransport {
     let headers: HTTPHeaders
     let chunks: [ByteBuffer]
     var failure: (any Error & Sendable)? = nil
+    let requestCount = NIOLockedValueBox(0)
 
     func execute(
         _ request: HTTPClientRequest,
         timeout: TimeAmount,
         logger: Logger?
     ) async throws -> HTTPClientResponse {
+        requestCount.withLockedValue { $0 += 1 }
         let body = AsyncThrowingStream<ByteBuffer, any Error> { continuation in
             for chunk in chunks {
                 continuation.yield(chunk)

@@ -425,6 +425,27 @@ extension NetSkeinRequest {
         try await executor.send()
     }
 
+    /// Sends the request and hands each chunk of a successful response to `onChunk` as it
+    /// arrives, without collecting the body in memory.
+    ///
+    /// ## Retries
+    ///
+    /// The retry policy applies only until the first chunk is handed to `onChunk`:
+    ///
+    /// - A connection failure, a retryable status such as `503`, or a body that fails before its
+    ///   first chunk is retried like ``send()``, with the same backoff and `Retry-After` handling.
+    /// - Once a chunk has been delivered, any failure is thrown instead. A retry would start the
+    ///   response from the beginning and deliver the same chunks again, and only the caller
+    ///   knows how to undo what it did with them. To try again, reset that state and call
+    ///   `stream(_:)` again.
+    ///
+    /// - Parameter onChunk: Called with each chunk, the bytes received so far, and the expected
+    ///   total from `Content-Length` when the server sends one.
+    /// - Returns: The response status and headers.
+    /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, before any
+    ///   chunk is delivered. An error thrown by `onChunk` is never retried and is rethrown with
+    ///   kind `clientError`. Other failures are thrown once the retry policy gives up, or as
+    ///   soon as they happen after the first chunk.
     @discardableResult
     public func stream(
         _ onChunk: @escaping ChunkHandler
