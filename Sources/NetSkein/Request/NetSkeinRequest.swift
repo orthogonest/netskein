@@ -427,7 +427,7 @@ extension NetSkeinRequest {
 
     @discardableResult
     public func stream(
-        _ onChunk: ChunkHandler
+        _ onChunk: @escaping ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
         try await executor.stream(onChunk)
     }
