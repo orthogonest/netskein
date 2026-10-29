@@ -88,12 +88,16 @@ extension NetSkeinRequest {
         return copy
     }
 
+    /// Appends `items` to the URL's query, sorted by name so the same items always produce the
+    /// same URL. Items already in the URL keep their place before them.
     @discardableResult
     public func query(_ items: [String: String]) -> Self {
         guard var components = URLComponents(string: url) else { return self }
 
         var queryItems = components.queryItems ?? []
-        for (key, value) in items { queryItems.append(URLQueryItem(name: key, value: value)) }
+        for (key, value) in items.sorted(by: { $0.key < $1.key }) {
+            queryItems.append(URLQueryItem(name: key, value: value))
+        }
         components.queryItems = queryItems
 
         var copy = self
