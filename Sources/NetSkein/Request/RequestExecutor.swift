@@ -30,42 +30,11 @@ extension RequestExecutor {
 
         activeHeaders.replaceOrAdd(name: "X-Request-ID", value: requestID)
 
-        if let cookieValue = getCookie() {
-            activeHeaders.replaceOrAdd(name: "Cookie", value: cookieValue)
-        }
-
         for (name, value) in extraHeaders {
             activeHeaders.replaceOrAdd(name: name, value: value)
         }
 
         return RequestHead(method: method, url: url, headers: activeHeaders)
-    }
-
-    private func getCookie() -> String? {
-        guard
-            let jar = client.cookieJar,
-            let urlObject = URL(string: url),
-            let host = urlObject.host,
-            let cookieValue = jar.cookieHeader(for: host)
-        else { return nil }
-        return cookieValue
-    }
-
-    private func setCookie(cookieHeaders: [String]) {
-        guard
-            let jar = client.cookieJar,
-            let urlObject = URL(string: url),
-            let host = urlObject.host
-        else { return }
-
-        for cookie in cookieHeaders {
-            let components = cookie.components(separatedBy: ";")
-            guard let parts = components.first?.components(separatedBy: "="), parts.count == 2
-            else { continue }
-            let name = parts[0].trimmingCharacters(in: .whitespaces)
-            let value = parts[1].trimmingCharacters(in: .whitespaces)
-            jar.setCookie(host: host, name: name, value: value)
-        }
     }
 }
 
@@ -141,9 +110,6 @@ extension RequestExecutor {
                 "duration_seconds": .string(String(format: "%.4f", duration)),
             ]
         )
-
-        let cookieHeaders = response.headers["Set-Cookie"]
-        setCookie(cookieHeaders: cookieHeaders)
     }
 
     private func mapError(

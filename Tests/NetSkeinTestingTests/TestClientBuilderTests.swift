@@ -44,7 +44,7 @@ struct TestClientBuilderTests {
             .cookieJar(expectedJar)
             .build()
 
-        #expect(client.cookieJar === expectedJar)
+        #expect((client.middlewares.first as? CookieMiddleware)?.jar === expectedJar)
     }
 
     @Test(
