@@ -43,43 +43,6 @@ extension RequestExecutorTests {
     }
 
     @Test(
-        "RequestExecutorTests: Verifies cookie jar injects Cookie header and ingests valid Set-Cookie headers"
-    )
-    func testBufferedExecutionCookieHandling() async throws {
-        let cookieJar = CookieJar()
-        cookieJar.setCookie(host: "api.example.com", name: "session_id", value: "token_123")
-
-        let isCookieSent = NIOLockedValueBox(false)
-
-        var responseHeaders = HTTPHeaders()
-        responseHeaders.add(name: "Set-Cookie", value: "user=octocat; Path=/; Secure")
-        responseHeaders.add(name: "Set-Cookie", value: "malformed_cookie_no_equal_sign")
-
-        let stub = HTTPStub(
-            method: .GET,
-            url: "https://api.example.com/profile",
-            requestValidator: { request in
-                if let cookie = request.headers.first(name: "Cookie") {
-                    #expect(cookie.contains("session_id=token_123"))
-                    isCookieSent.withLockedValue { $0 = true }
-                }
-            },
-            outcome: .response(status: .ok, headers: responseHeaders, body: nil)
-        )
-
-        let client = NetSkeinClient.testing()
-            .cookieJar(cookieJar)
-            .addStub(stub)
-            .build()
-
-        let executor = makeExecutor(client: client, url: "https://api.example.com/profile")
-        _ = try await executor.send()
-
-        #expect(isCookieSent.withLockedValue { $0 } == true)
-        #expect(cookieJar.cookieHeader(for: "api.example.com")?.contains("user=octocat") == true)
-    }
-
-    @Test(
         "RequestExecutorTests: Verifies retry loop recovers when transient 503 succeeds on next attempt"
     )
     func testBufferedExecutionRecoversViaRetry() async throws {

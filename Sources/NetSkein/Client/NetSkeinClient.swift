@@ -6,7 +6,6 @@ import Tracing
 public final class NetSkeinClient: Sendable {
     let transport: any HTTPTransport
     let defaultHeaders: HTTPHeaders
-    let cookieJar: CookieJar?
     let retryPolicy: RetryPolicy
     let middlewares: [any HTTPMiddleware]
     let tracer: (any Tracer)?
@@ -25,9 +24,8 @@ public final class NetSkeinClient: Sendable {
     ) {
         self.transport = transport
         self.defaultHeaders = defaultHeaders
-        self.cookieJar = cookieJar
         self.retryPolicy = retryPolicy
-        self.middlewares = middlewares
+        self.middlewares = (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + middlewares
         self.tracer = tracer
         self.logger = logger
         self.percentEncoder = percentEncoder
