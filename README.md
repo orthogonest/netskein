@@ -51,6 +51,7 @@ Built natively on top of **SwiftNIO** and `async-http-client`, NetSkein provides
 ### 5. HTTP Caching
 
 - **RFC 9111 Private Cache:** Opt in with `.cache(HTTPCache(...))`. Fresh responses are reused without a network call, stale ones are revalidated with `ETag` / `Last-Modified` (a `304` reuses the stored body), and `Vary`, `no-store`, `no-cache`, `must-revalidate` and unsafe-method invalidation are honoured.
+- **Memory or Disk Storage:** `MemoryCacheStorage` for the current run, or `DiskCacheStorage` to keep responses across restarts, with crash-safe writes and least-recently-used eviction. Other stores, such as SQLite, plug in through the `CacheStorage` protocol.
 - **Cache Policies:** Per request with `.cachePolicy(_:)`, or for every request with `cache.defaultPolicy` (switchable at runtime, e.g. for an offline mode): `.reloadIgnoringCache`, `.noStore` for sensitive responses, `.returnCacheElseLoad`, `.onlyIfCached` (answers `504` on a miss), or `.fresh(for:)` to cache endpoints whose backend forbids caching.
 - **Offline Friendly:** `defaultTTL` for responses without caching headers, and `maxStaleOnError` to return the last good response, up to a chosen age, when the network or server fails.
 - **Observable:** Every response carries an RFC 9211 `Cache-Status` header, also recorded in logs and on the request span.
@@ -156,6 +157,13 @@ await cache.removeAll()
 ```
 
 Only `send()` uses the cache; `stream` and `download` always go to the network. Responses that set cookies are stored without `Set-Cookie`, and responses that arrived through a redirect are not stored.
+
+To keep cached responses across app restarts, store them on disk:
+
+```swift
+let storage = try DiskCacheStorage(directory: cachesDirectory + "/netskein", maxBytes: 50 * 1024 * 1024)
+let cache = HTTPCache(storage: storage)
+```
 
 ## License
 
