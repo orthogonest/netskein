@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import InMemoryTracing
 import Logging
 import NIOConcurrencyHelpers
+import NIOCore
 import NIOHTTP1
 import Testing
 import Tracing

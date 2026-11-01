@@ -1,10 +1,5 @@
+import Foundation
 import NIOCore
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// Streams a file as a request body, reading one chunk per `next()` call.
 ///

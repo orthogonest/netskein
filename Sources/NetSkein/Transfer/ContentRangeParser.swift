@@ -1,3 +1,5 @@
+import Foundation
+
 enum ContentRangeParser {
     /// Parses the complete resource length from a `Content-Range` header value (e.g., "bytes 200-1000/67589").
     static func parseTotalBytes(from header: String?) -> Int64? {

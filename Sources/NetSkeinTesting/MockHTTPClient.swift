@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
+import NIOHTTP1
 import NetSkein
 
 /// A transport that answers requests from ``HTTPStub``s instead of the network.

@@ -67,7 +67,7 @@ Built natively on top of **SwiftNIO** and `async-http-client`, NetSkein provides
 Add NetSkein to your `Package.swift` manifest files:
 
 ```swift
-// swift-tools-version: 6.1
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(

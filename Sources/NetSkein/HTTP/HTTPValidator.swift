@@ -1,10 +1,5 @@
+import Foundation
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// The validators of one response: the `ETag` and `Last-Modified` that identify the version of
 /// the resource it carries (RFC 9110 §8.8).

@@ -1,10 +1,5 @@
+import Foundation
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// The directives of every `Cache-Control` field in a request or response (RFC 9111 §5.2).
 ///

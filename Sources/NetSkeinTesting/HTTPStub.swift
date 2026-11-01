@@ -1,12 +1,7 @@
 import AsyncHTTPClient
+import Foundation
 import NIOCore
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// A canned answer for requests with a given method and URL.
 ///

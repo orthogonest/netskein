@@ -3,6 +3,7 @@ import InMemoryTracing
 import Logging
 import NIOCore
 import NIOHTTP1
+import NIOHTTPCompression
 import NIOSSL
 import Testing
 import Tracing

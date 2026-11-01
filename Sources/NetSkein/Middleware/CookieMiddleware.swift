@@ -1,10 +1,6 @@
 import AsyncHTTPClient
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
+import Foundation
+import NIOHTTP1
 
 /// Sends the jar's cookies for the request's host and stores the cookies the response sets.
 ///

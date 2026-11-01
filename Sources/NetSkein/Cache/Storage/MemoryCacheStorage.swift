@@ -1,4 +1,5 @@
 import NIOConcurrencyHelpers
+import NIOCore
 
 /// Keeps cached responses in memory, evicting the least recently used URLs once their bodies
 /// take more than `maxBytes`.

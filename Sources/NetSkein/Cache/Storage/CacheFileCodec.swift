@@ -1,11 +1,6 @@
+import Foundation
 import NIOCore
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// The binary format of one ``DiskCacheStorage`` file: every entry stored for one URL.
 ///

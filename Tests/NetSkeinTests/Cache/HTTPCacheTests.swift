@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Foundation
 import InMemoryTracing
 import Logging
 import NIOCore

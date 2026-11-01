@@ -1,4 +1,4 @@
-.PHONY: help build _building clean _cleaning test _testing coverage _prepare-cov 
+.PHONY: help build _building clean _cleaning test _testing test-linux coverage _prepare-cov 
 
 # --- Colors ---
 
@@ -61,6 +61,21 @@ _testing:
 _testing-cov:
 	@echo "$(CYAN)>>> Running All Tests with Code Coverage...$(RESET)"
 	@swift test --enable-code-coverage
+
+# --- Linux ---
+
+LINUX_SWIFT ?= 6.2
+
+## Run all Tests on Linux in Docker (LINUX_SWIFT=6.2 by default)
+test-linux:
+	@echo "$(CYAN)>>> Running All Tests on Linux with Swift $(LINUX_SWIFT)...$(RESET)"
+	@docker run --rm \
+	  -v "$(CURDIR)":/src:ro \
+	  -v netskein-linux-build-$(LINUX_SWIFT):/work/.build \
+	  swift:$(LINUX_SWIFT) bash -c '\
+	    find /work -mindepth 1 -maxdepth 1 ! -name .build -exec rm -rf {} + && \
+	    cd /src && tar --exclude=./.build --exclude=./Examples/.build --exclude=./.git -cf - . | (cd /work && tar -xf -) && \
+	    cd /work && swift test --parallel'
 
 # --- Coverage ---
 

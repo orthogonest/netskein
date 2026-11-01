@@ -1,11 +1,6 @@
+import Foundation
 import NIOConcurrencyHelpers
 import NIOCore
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 public struct MultipartForm: Sendable {
     public struct Part: Sendable {

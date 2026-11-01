@@ -1,12 +1,7 @@
 import AsyncHTTPClient
+import Foundation
 import NIOCore
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// Answers requests from an ``HTTPCache`` and stores the responses it may (RFC 9111).
 ///

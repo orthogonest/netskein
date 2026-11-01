@@ -1,12 +1,8 @@
 import AsyncHTTPClient
+import Foundation
 import NIOCore
+import NIOFoundationCompat
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 public struct NetSkeinResponse: Sendable {
     public let status: HTTPResponseStatus

@@ -21,8 +21,8 @@ Ensure you have the required global environment manager installed on your machin
 - **Windows**: `winget install jdx.mise`
 
 > [!NOTE]
-> NetSkein relies on the official Swift Toolchain (Swift 6.0+).
-> On macOS, make sure your active Xcode or Command Line Tools version supports Swift 6.
+> NetSkein relies on the official Swift Toolchain (Swift 6.2+).
+> On macOS, make sure your active Xcode or Command Line Tools version supports Swift 6.2 (Xcode 26 or later).
 
 ### 2. Initialize the Project Ecosystem
 

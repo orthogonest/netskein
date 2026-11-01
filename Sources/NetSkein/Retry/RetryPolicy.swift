@@ -1,3 +1,5 @@
+import NIOHTTP1
+
 public struct RetryPolicy: Sendable {
     public typealias Evaluator = @Sendable (RetryContext) async -> Bool
 
