@@ -10,6 +10,9 @@ import Tracing
 /// Start one with ``NetSkein/NetSkeinClient/testing()``. It offers the same options as the
 /// production builder that matter in tests: default headers, cookies, cache, retry policy,
 /// middleware, tracer and logger.
+///
+/// Its defaults match the production builder, so code behaves the same in tests as in the app:
+/// in particular, requests are not retried unless a test sets ``retryPolicy(_:)``.
 public struct TestClientBuilder: Sendable {
     private var defaultHeaders: HTTPHeaders
     private var cookieJar: CookieJar?
@@ -24,7 +27,7 @@ public struct TestClientBuilder: Sendable {
     public init() {
         self.stubs = []
         defaultHeaders = HTTPHeaders()
-        retryPolicy = .standard()
+        retryPolicy = .disabled
         middlewares = []
         tracer = InstrumentationSystem.tracer
         logger = Logger(label: LoggerLabel.test)

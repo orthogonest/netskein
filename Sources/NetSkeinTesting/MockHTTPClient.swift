@@ -10,7 +10,8 @@ import NetSkein
 /// Each request is answered by the stubs matching its method and URL, in order: the first call
 /// to a route gets the first matching stub, the second call the second, and calls beyond the
 /// last stub keep getting the last one. A request without a matching stub fails with a
-/// `networkFailure`.
+/// `clientError` naming the request, so a missing stub is reported once, never retried as a
+/// network failure.
 public final class MockHTTPClient: Sendable {
     let stubsBox: NIOLockedValueBox<[HTTPStub]>
     let callCounts: NIOLockedValueBox<[String: Int]>
@@ -59,9 +60,13 @@ extension MockHTTPClient: HTTPTransport {
         }
 
         guard !matches.isEmpty else {
+            // A missing stub is a mistake in the test, not a network failure, so it is never retried
             throw NetSkeinError.custom(
-                kind: .networkFailure,
-                message: "Unhandled request caught for route \(key)"
+                kind: .clientError,
+                message: """
+                    No HTTPStub matches \(request.method.rawValue) \(request.url); add one, for example \
+                    HTTPStub.request(.\(request.method.rawValue), url: "\(request.url)")
+                    """
             )
         }
 
