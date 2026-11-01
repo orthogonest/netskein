@@ -39,19 +39,15 @@ extension MockHTTPClient: HTTPTransport {
             $0.method == request.method && $0.urlMatcher(request.url)
         }
 
-        let safeIndex = currentCallCount - 1
+        guard !matches.isEmpty else {
+            throw NetSkeinError.custom(
+                kind: .networkFailure,
+                message: "Unhandled request caught for route \(key)"
+            )
+        }
 
-        let matchingStub: HTTPStub =
-            if matches.indices.contains(safeIndex) {
-                matches[safeIndex]
-            } else if let lastMatch = matches.last {
-                lastMatch
-            } else {
-                throw NetSkeinError.custom(
-                    kind: .networkFailure,
-                    message: "Unhandled request caught for route \(key)"
-                )
-            }
+        // Each call to a route uses the next matching stub; calls beyond them reuse the last one
+        let matchingStub = matches[min(currentCallCount, matches.count) - 1]
 
         if let validator = matchingStub.requestValidator {
             try validator(request)
