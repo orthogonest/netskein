@@ -1,5 +1,6 @@
 import NIOCore
 import NIOHTTP1
+import NetSkeinTesting
 import Testing
 
 @testable import NetSkein
@@ -236,7 +237,7 @@ extension DiskCacheStorageTests {
         )
         _ = try await before.get(itemsURL).send()
 
-        clock.advance(10)
+        clock.advance(by: .seconds(10))
         let after = makeClient(
             transport,
             cache: makeCache(

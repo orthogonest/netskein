@@ -4,6 +4,12 @@ import NIOHTTP1
 import NetSkein
 import Tracing
 
+/// Builds a `NetSkeinClient` whose requests are answered by ``HTTPStub``s through a
+/// ``MockHTTPClient`` instead of the network.
+///
+/// Start one with ``NetSkein/NetSkeinClient/testing()``. It offers the same options as the
+/// production builder that matter in tests: default headers, cookies, cache, retry policy,
+/// middleware, tracer and logger.
 public struct TestClientBuilder: Sendable {
     private var defaultHeaders: HTTPHeaders
     private var cookieJar: CookieJar?
@@ -40,7 +46,7 @@ extension TestClientBuilder {
         return copy
     }
 
-    /// Caches responses as described by ``HTTPCache``.
+    /// Caches responses as described by `HTTPCache`.
     @discardableResult
     public func cache(_ cache: HTTPCache) -> Self {
         var copy = self

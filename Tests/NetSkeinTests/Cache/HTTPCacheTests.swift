@@ -24,7 +24,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         let miss = try await client.get(itemsURL).send()
-        clock.advance(10)
+        clock.advance(by: .seconds(10))
         let hit = try await client.get(itemsURL).send()
 
         #expect(miss.cacheStatus == "fwd=uri-miss; stored")
@@ -43,7 +43,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(60)
+        clock.advance(by: .seconds(60))
         let response = try await client.get(itemsURL).send()
 
         #expect(response.cacheStatus == "fwd=stale; fwd-status=200; stored")
@@ -95,7 +95,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock, defaultTTL: .seconds(30)))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(29)
+        clock.advance(by: .seconds(29))
         let hit = try await client.get(itemsURL).send()
 
         #expect(hit.cacheStatus == "hit")
@@ -338,7 +338,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
         let revalidated = try await client.get(itemsURL).send()
         let hit = try await client.get(itemsURL).send()
 
@@ -360,9 +360,9 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(150)
+        clock.advance(by: .seconds(150))
         let revalidated = try await client.get(itemsURL).send()
-        clock.advance(200)
+        clock.advance(by: .seconds(200))
         let hit = try await client.get(itemsURL).send()
 
         #expect(revalidated.cacheStatus == "fwd=stale; fwd-status=304; stored")
@@ -380,7 +380,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
         let response = try await client.get(itemsURL).send()
 
         #expect(response.text() == "new")
@@ -409,7 +409,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
         let response = try await client.get(itemsURL).send()
 
         #expect(response.text() == (matches ? "old" : "new"))
@@ -425,7 +425,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
         let revalidated = try await client.get(itemsURL).header("Cache-Control", "no-store").send()
         let next = try await client.get(itemsURL).send()
 
@@ -473,7 +473,7 @@ extension HTTPCacheTests {
         ])
         let client = makeClient(transport, cache: makeCache(clock: clock))
         _ = try await client.get(itemsURL).send()
-        clock.advance(cacheControl == "max-stale=1" ? 70 : 10)
+        clock.advance(by: .seconds(cacheControl == "max-stale=1" ? 70 : 10))
 
         var request = client.get(itemsURL).cachePolicy(policy)
         if !cacheControl.isEmpty { request = request.header("Cache-Control", cacheControl) }
@@ -507,7 +507,7 @@ extension HTTPCacheTests {
         ])
         let client = makeClient(transport, cache: makeCache(clock: clock))
         _ = try await client.get(itemsURL).send()
-        clock.advance(20)
+        clock.advance(by: .seconds(20))
 
         let unlimited = try await client.get(itemsURL).cachePolicy(.returnCacheElseLoad).send()
         let bounded = try await client.get(itemsURL).header("Cache-Control", "max-stale=15").send()
@@ -518,7 +518,7 @@ extension HTTPCacheTests {
 
         // The second response replaces the first and forbids serving it stale
         _ = try await client.get(itemsURL).header("Cache-Control", "no-cache").send()
-        clock.advance(20)
+        clock.advance(by: .seconds(20))
         await #expect(throws: NetSkeinError.self) {
             _ = try await client.get(itemsURL).cachePolicy(.returnCacheElseLoad).send()
         }
@@ -531,7 +531,7 @@ extension HTTPCacheTests {
 
         let empty = try await client.get(itemsURL).cachePolicy(.onlyIfCached).send()
         _ = try await client.get(itemsURL).send()
-        clock.advance(20)
+        clock.advance(by: .seconds(20))
         let stale = try await client.get(itemsURL).cachePolicy(.onlyIfCached).send()
         let strict = try await client.get(itemsURL).header("Cache-Control", "only-if-cached").send()
 
@@ -556,7 +556,7 @@ extension HTTPCacheTests {
         _ = try await client.get(itemsURL).cachePolicy(.fresh(for: .minutes(5))).send()
         let normal = try await client.get(itemsURL).send()
         let forced = try await client.get(itemsURL).cachePolicy(.fresh(for: .minutes(5))).send()
-        clock.advance(301)
+        clock.advance(by: .seconds(301))
         let expired = try await client.get(itemsURL).cachePolicy(.fresh(for: .minutes(5))).send()
 
         #expect(normal.text() == "normal")
@@ -582,7 +582,7 @@ extension HTTPCacheTests {
         let client = makeClient(transport, cache: makeCache(clock: clock))
 
         _ = try await client.get(itemsURL).cachePolicy(.fresh(for: .minutes(5))).send()
-        clock.advance(3600)
+        clock.advance(by: .seconds(3600))
         let offline = try await client.get(itemsURL).cachePolicy(policy).send()
 
         #expect(offline.text() == "countries")
@@ -645,7 +645,7 @@ extension HTTPCacheTests {
         let explicit = try await client.get(itemsURL).cachePolicy(.default).send()
         #expect(explicit.cacheStatus == "fwd=uri-miss; stored")
 
-        clock.advance(10)
+        clock.advance(by: .seconds(10))
         let stale = try await client.get(itemsURL).send()
         #expect(stale.cacheStatus == "hit")
 
@@ -674,7 +674,7 @@ extension HTTPCacheTests {
             cache: makeCache(clock: clock, maxStaleOnError: .hours(1))
         )
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
 
         let afterFailure = try await client.get(itemsURL).send()
         let afterOutage = try await client.get(itemsURL).send()
@@ -700,7 +700,7 @@ extension HTTPCacheTests {
             cache: makeCache(clock: clock, maxStaleOnError: maxStaleOnError)
         )
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
 
         await #expect(throws: NetSkeinError.self) {
             _ = try await client.get(itemsURL).send()
@@ -715,7 +715,7 @@ extension HTTPCacheTests {
         ])
         let client = makeClient(transport, cache: makeCache(clock: clock))
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
 
         let response = try await client.get(itemsURL).send()
 
@@ -734,7 +734,7 @@ extension HTTPCacheTests {
             cache: makeCache(clock: clock, maxStaleOnError: .hours(1))
         )
         _ = try await client.get(itemsURL).send()
-        clock.advance(5)
+        clock.advance(by: .seconds(5))
 
         let response = try await client.get(itemsURL).send()
 

@@ -2,9 +2,23 @@ import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
 
+/// A canned answer for requests with a given method and URL.
+///
+/// ```swift
+/// let stub = HTTPStub(
+///     method: .GET,
+///     url: "https://api.example.com/me",
+///     outcome: .response(status: .ok, headers: ["Content-Type": "application/json"], body: ByteBuffer(string: "{}"))
+/// )
+/// ```
+///
+/// Several stubs for the same route answer successive calls in order; see ``MockHTTPClient``.
 public struct HTTPStub: Sendable {
+    /// What a matching request gets back.
     public enum Outcome: Sendable {
+        /// A response with this status, headers and body.
         case response(status: HTTPResponseStatus, headers: HTTPHeaders, body: ByteBuffer? = nil)
+        /// The request fails with this error, as if the connection had failed.
         case error(any Error & Sendable)
     }
 
@@ -12,7 +26,10 @@ public struct HTTPStub: Sendable {
 
     public let method: HTTPMethod
     public let urlMatcher: @Sendable (String) -> Bool
+    /// How long to wait before answering, to simulate a slow server.
     public let delay: TimeAmount?
+    /// Runs for every matching request before it is answered; throw from it to fail the request,
+    /// or use test expectations inside it to check what was sent.
     public let requestValidator: Validator?
     public let outcome: Outcome
 

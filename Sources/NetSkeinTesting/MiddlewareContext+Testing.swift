@@ -2,7 +2,7 @@ import Logging
 import NetSkein
 
 extension MiddlewareContext {
-    /// A context for calling ``HTTPMiddleware/intercept(_:context:next:)`` directly in unit tests.
+    /// A context for calling `HTTPMiddleware.intercept(_:context:next:)` directly in unit tests.
     public static func testing(
         attempt: Int = 0,
         requestID: String = "test-request-id",
