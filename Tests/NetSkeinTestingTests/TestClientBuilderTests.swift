@@ -178,3 +178,38 @@ extension TestClientBuilderTests {
         #expect(NetSkeinClient.testing().disableTracing().build().tracer == nil)
     }
 }
+
+// MARK: - Defaults
+
+extension TestClientBuilderTests {
+    struct Dropped: Error {}
+
+    @Test("TestClientBuilderTests: requests are not retried by default, as in production")
+    func defaultDoesNotRetry() async throws {
+        let client = NetSkeinClient.testing()
+            .addStubs([
+                HTTPStub.get("https://example.com/flaky").fail(with: Dropped()),
+                HTTPStub.get("https://example.com/flaky").text("recovered"),
+            ])
+            .build()
+
+        await #expect(throws: NetSkeinError.self) {
+            _ = try await client.get("https://example.com/flaky").send()
+        }
+        #expect(client.mock?.requests.count == 1)
+    }
+
+    @Test("TestClientBuilderTests: a request without a stub fails once, even with retries enabled")
+    func unmatchedRequestIsNotRetried() async throws {
+        let client = NetSkeinClient.testing()
+            .retryPolicy(.standard(maxRetries: 3, backoff: .immediate))
+            .build()
+
+        await #expect {
+            _ = try await client.get("https://example.com/missing").send()
+        } throws: { error in
+            (error as? NetSkeinError)?.kind == .clientError
+        }
+        #expect(client.mock?.requests.count == 1)
+    }
+}

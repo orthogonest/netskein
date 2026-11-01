@@ -27,13 +27,21 @@ struct MockHTTPClientTests {
         #expect(response.status == .ok)
     }
 
-    @Test("MockHTTPClientTests: Verify that an unhandled route throws a NetSkeinError.custom error")
+    @Test(
+        "MockHTTPClientTests: Verify that an unhandled route throws a clientError naming the request"
+    )
     func executeThrowsUnhandledRequestWhenNoMatchFound() async {
         let client = MockHTTPClient(stubs: [])
         let request = HTTPClientRequest(url: "https://example.com")
 
-        await #expect(throws: NetSkeinError.self) {
+        await #expect {
             _ = try await client.execute(request, timeout: .seconds(1))
+        } throws: { error in
+            let error = error as? NetSkeinError
+            let message = error?.errorDescription ?? ""
+            return error?.kind == .clientError
+                && message.contains("GET")
+                && message.contains("https://example.com")
         }
     }
 
