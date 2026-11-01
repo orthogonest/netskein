@@ -8,31 +8,13 @@ public final class NetSkeinClient: Sendable {
     let defaultHeaders: HTTPHeaders
     let retryPolicy: RetryPolicy
     let middlewares: [any HTTPMiddleware]
+    let cache: HTTPCache?
+    /// Whether the transport decompresses response bodies but keeps their `Content-Encoding`.
+    let transportDecompresses: Bool
     let tracer: (any Tracer)?
     let logger: Logger
     let percentEncoder: PercentEncoder
 
-    public init(
-        transport: some HTTPTransport,
-        defaultHeaders: HTTPHeaders = .init(),
-        cookieJar: CookieJar? = nil,
-        retryPolicy: RetryPolicy = .disabled,
-        middlewares: [any HTTPMiddleware] = [],
-        tracer: (any Tracer)? = InstrumentationSystem.tracer,
-        logger: Logger,
-        percentEncoder: PercentEncoder = .default,
-    ) {
-        self.transport = transport
-        self.defaultHeaders = defaultHeaders
-        self.retryPolicy = retryPolicy
-        self.middlewares = (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + middlewares
-        self.tracer = tracer
-        self.logger = logger
-        self.percentEncoder = percentEncoder
-    }
-}
-
-extension NetSkeinClient {
     public convenience init(
         defaultHeaders: HTTPHeaders = .init(),
         retryPolicy: RetryPolicy = .disabled
@@ -44,6 +26,34 @@ extension NetSkeinClient {
             retryPolicy: retryPolicy,
             logger: Logger(label: LoggerLabel.identifier)
         )
+    }
+
+    /// Creates a client that sends requests through `transport`.
+    ///
+    /// Responses are cached as described by ``HTTPCache`` when `cache` is set. The transport must
+    /// not decompress response bodies; build the client with ``NetSkeinClientBuilder`` to combine
+    /// caching with automatic decompression.
+    public init(
+        transport: some HTTPTransport,
+        defaultHeaders: HTTPHeaders = .init(),
+        cookieJar: CookieJar? = nil,
+        cache: HTTPCache? = nil,
+        transportDecompresses: Bool = false,
+        retryPolicy: RetryPolicy = .disabled,
+        middlewares: [any HTTPMiddleware] = [],
+        tracer: (any Tracer)? = InstrumentationSystem.tracer,
+        logger: Logger,
+        percentEncoder: PercentEncoder = .default,
+    ) {
+        self.transport = transport
+        self.defaultHeaders = defaultHeaders
+        self.retryPolicy = retryPolicy
+        self.middlewares = (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + middlewares
+        self.cache = cache
+        self.transportDecompresses = transportDecompresses
+        self.tracer = tracer
+        self.logger = logger
+        self.percentEncoder = percentEncoder
     }
 
     public static func builder() -> NetSkeinClientBuilder {

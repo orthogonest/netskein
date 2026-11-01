@@ -102,14 +102,15 @@ extension RequestExecutor {
             Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / Nanoseconds.toSeconds
         let activeResponseID = response.headers["X-Request-ID"].first ?? context.requestID
 
-        context.logger.info(
-            "Response received",
-            metadata: [
-                "request_id": .string(activeResponseID),
-                "status_code": .string("\(response.status.code)"),
-                "duration_seconds": .string(String(format: "%.4f", duration)),
-            ]
-        )
+        var metadata: Logger.Metadata = [
+            "request_id": .string(activeResponseID),
+            "status_code": .string("\(response.status.code)"),
+            "duration_seconds": .string(String(format: "%.4f", duration)),
+        ]
+        if let cacheStatus = response.headers.netSkeinCacheStatus {
+            metadata["cache_status"] = .string(cacheStatus)
+        }
+        context.logger.info("Response received", metadata: metadata)
     }
 
     private func mapError(
@@ -183,6 +184,9 @@ extension RequestExecutor {
             let received = try await execute(head, context, action: operation.action)
             response = received
             span?.attributes["http.response.status_code"] = Int(received.status.code)
+            if let cacheStatus = received.headers.netSkeinCacheStatus {
+                span?.attributes["netskein.cache_status"] = cacheStatus
+            }
             recordResponse(received, context, startedAt: startTime)
 
             let result = try await operation.handle(received, logger: context.logger)

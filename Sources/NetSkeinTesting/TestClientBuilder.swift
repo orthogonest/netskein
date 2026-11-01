@@ -7,6 +7,7 @@ import Tracing
 public struct TestClientBuilder: Sendable {
     private var defaultHeaders: HTTPHeaders
     private var cookieJar: CookieJar?
+    private var cache: HTTPCache?
     private var retryPolicy: RetryPolicy
     private var middlewares: [any HTTPMiddleware]
     private var tracer: (any Tracer)?
@@ -36,6 +37,14 @@ extension TestClientBuilder {
     public func cookieJar(_ jar: CookieJar) -> Self {
         var copy = self
         copy.cookieJar = jar
+        return copy
+    }
+
+    /// Caches responses as described by ``HTTPCache``.
+    @discardableResult
+    public func cache(_ cache: HTTPCache) -> Self {
+        var copy = self
+        copy.cache = cache
         return copy
     }
 
@@ -113,6 +122,7 @@ extension TestClientBuilder {
             transport: transport,
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
+            cache: cache,
             retryPolicy: retryPolicy,
             middlewares: middlewares,
             tracer: tracer,

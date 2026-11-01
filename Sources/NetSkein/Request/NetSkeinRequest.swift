@@ -19,6 +19,7 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
     private var timeout: TimeAmount?
     private var retryPolicy: RetryPolicy?
     private var middlewares: [any HTTPMiddleware]
+    private var cachePolicy: CachePolicy?
     private let percentEncoder: PercentEncoder
 
     init(
@@ -31,6 +32,7 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
         middlewares: [any HTTPMiddleware] = [],
+        cachePolicy: CachePolicy? = nil,
         percentEncoder: PercentEncoder = .default,
     ) {
         self.client = client
@@ -42,6 +44,7 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         self.timeout = timeout
         self.retryPolicy = retryPolicy
         self.middlewares = middlewares
+        self.cachePolicy = cachePolicy
         self.percentEncoder = percentEncoder
     }
 }
@@ -128,6 +131,19 @@ extension NetSkeinRequest {
         return copy
     }
 
+    /// Sets how this request uses the client's ``HTTPCache``, instead of the cache's
+    /// ``HTTPCache/defaultPolicy``.
+    ///
+    /// ``CachePolicy/reloadIgnoringCache`` and ``CachePolicy/noStore`` also add their
+    /// `Cache-Control` directive to the request, which applies even without a cache. The other
+    /// policies have no effect without one.
+    @discardableResult
+    public func cachePolicy(_ policy: CachePolicy) -> Self {
+        var copy = self
+        copy.cachePolicy = policy
+        return copy
+    }
+
     /// Adds a middleware for this request only; it runs inside the client's middleware.
     @discardableResult
     public func using(_ middleware: some HTTPMiddleware) -> Self {
@@ -175,6 +191,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
             middlewares: copy.middlewares,
+            cachePolicy: copy.cachePolicy,
             percentEncoder: copy.percentEncoder,
         )
     }
@@ -203,6 +220,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
                 timeout: copy.timeout,
                 retryPolicy: copy.retryPolicy,
                 middlewares: copy.middlewares,
+                cachePolicy: copy.cachePolicy,
                 percentEncoder: copy.percentEncoder,
             )
         } catch {
@@ -235,6 +253,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
             middlewares: copy.middlewares,
+            cachePolicy: copy.cachePolicy,
             percentEncoder: copy.percentEncoder,
         )
     }
@@ -284,6 +303,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
             middlewares: copy.middlewares,
+            cachePolicy: copy.cachePolicy,
             percentEncoder: copy.percentEncoder,
         )
     }
@@ -302,6 +322,7 @@ extension NetSkeinRequest where Body == BodyForbidden {
             timeout: self.timeout,
             retryPolicy: self.retryPolicy,
             middlewares: self.middlewares,
+            cachePolicy: self.cachePolicy,
             percentEncoder: self.percentEncoder,
         )
     }
@@ -409,8 +430,27 @@ extension NetSkeinRequest where Body == BodyAttached {
 }
 
 extension NetSkeinRequest {
-    private var executor: RequestExecutor {
-        RequestExecutor(
+    /// The executor for one call. `buffered` is whether the call collects the whole body, which
+    /// is what lets the cache reuse and store responses.
+    private func executor(buffered: Bool) -> RequestExecutor {
+        let policy = cachePolicy ?? client.cache?.defaultPolicy ?? .default
+        var headers = headers
+        if let directive = policy.requestDirective {
+            headers.add(name: "Cache-Control", value: directive)
+        }
+
+        // The cache sits next to the transport, so it sees the request exactly as sent
+        let cache = client.cache.map {
+            CacheMiddleware(
+                cache: $0,
+                policy: policy,
+                usesStoredResponses: buffered,
+                transportDecompresses: client.transportDecompresses,
+                maxResponseBytes: maxResponseBytes
+            )
+        }
+
+        return RequestExecutor(
             client: client,
             method: method,
             url: url,
@@ -419,14 +459,14 @@ extension NetSkeinRequest {
             timeout: timeout,
             retryPolicy: retryPolicy,
             maxResponseBytes: maxResponseBytes,
-            middlewares: client.middlewares + middlewares,
+            middlewares: client.middlewares + middlewares + (cache.map { [$0] } ?? []),
         )
     }
 }
 
 extension NetSkeinRequest {
     public func send() async throws(NetSkeinError) -> NetSkeinResponse {
-        try await executor.send()
+        try await executor(buffered: true).send()
     }
 
     /// Sends the request and hands each chunk of a successful response to `onChunk` as it
@@ -454,7 +494,7 @@ extension NetSkeinRequest {
     public func stream(
         _ onChunk: @escaping ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
-        try await executor.stream(onChunk)
+        try await executor(buffered: false).stream(onChunk)
     }
 
     public func download(
@@ -462,6 +502,7 @@ extension NetSkeinRequest {
         resumption: DownloadResumption = .disabled,
         onProgress: DownloadProgress? = nil
     ) async throws(NetSkeinError) {
-        try await executor.download(to: path, resumption: resumption, onProgress: onProgress)
+        try await executor(buffered: false)
+            .download(to: path, resumption: resumption, onProgress: onProgress)
     }
 }
