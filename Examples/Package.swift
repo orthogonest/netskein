@@ -9,6 +9,7 @@ let package = Package(
         .executable(name: "GetJSON", targets: ["GetJSON"]),
         .executable(name: "StreamingByteCounter", targets: ["StreamingByteCounter"]),
         .executable(name: "CurlLogging", targets: ["CurlLogging"]),
+        .executable(name: "HTTPCaching", targets: ["HTTPCaching"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
@@ -51,6 +52,13 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ],
             path: "CurlLogging"
+        ),
+        .executableTarget(
+            name: "HTTPCaching",
+            dependencies: [
+                .product(name: "NetSkein", package: "netskein")
+            ],
+            path: "HTTPCaching"
         ),
     ]
 )
