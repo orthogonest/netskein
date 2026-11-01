@@ -4,10 +4,17 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NetSkein
 
+/// A transport that answers requests from ``HTTPStub``s instead of the network.
+///
+/// Each request is answered by the stubs matching its method and URL, in order: the first call
+/// to a route gets the first matching stub, the second call the second, and calls beyond the
+/// last stub keep getting the last one. A request without a matching stub fails with a
+/// `networkFailure`.
 public final class MockHTTPClient: Sendable {
     let stubsBox: NIOLockedValueBox<[HTTPStub]>
     let callCounts: NIOLockedValueBox<[String: Int]>
     let onShutdown: NIOLockedValueBox<(@Sendable () async throws -> Void)?>
+    private let received: NIOLockedValueBox<[HTTPClientRequest]>
 
     public init(
         stubs: [HTTPStub],
@@ -16,6 +23,16 @@ public final class MockHTTPClient: Sendable {
         self.stubsBox = NIOLockedValueBox(stubs)
         self.callCounts = NIOLockedValueBox([:])
         self.onShutdown = NIOLockedValueBox(onShutdown)
+        self.received = NIOLockedValueBox([])
+    }
+
+    /// Every request this transport received, oldest first, including ones no stub matched.
+    ///
+    /// Requests answered by the cache never reach the transport, so they are not here. Request
+    /// bodies cannot be read back from `HTTPClientRequest`; check them in a stub's
+    /// `requestValidator` or in a middleware instead.
+    public var requests: [HTTPClientRequest] {
+        received.withLockedValue { $0 }
     }
 }
 
@@ -25,6 +42,7 @@ extension MockHTTPClient: HTTPTransport {
         timeout: TimeAmount,
         logger: Logger? = nil
     ) async throws -> HTTPClientResponse {
+        received.withLockedValue { $0.append(request) }
         let key = "[\(request.method.rawValue)]\(request.url)"
 
         let currentCallCount = callCounts.withLockedValue { counts in

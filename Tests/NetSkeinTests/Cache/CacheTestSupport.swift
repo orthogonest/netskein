@@ -13,17 +13,6 @@ import NIOHTTP1
     import Foundation
 #endif
 
-/// A clock the test moves by hand.
-final class TestClock: Sendable {
-    private let current = NIOLockedValueBox(Date(timeIntervalSince1970: 1_700_000_000))
-
-    var now: Date { current.withLockedValue { $0 } }
-
-    func advance(_ seconds: TimeInterval) {
-        current.withLockedValue { $0 += seconds }
-    }
-}
-
 /// Answers each request with the next scripted reply and records what was sent.
 final class ScriptedTransport: HTTPTransport {
     enum Reply: Sendable {
@@ -95,13 +84,14 @@ func makeCache(
     maxStaleOnError: TimeAmount? = nil,
     defaultPolicy: CachePolicy = .default
 ) -> HTTPCache {
-    HTTPCache(
+    // A small maxEntryBytes by default, so tests can exceed it with short bodies
+    HTTPCache.testing(
+        clock: clock,
         storage: storage,
         maxEntryBytes: maxEntryBytes,
         defaultTTL: defaultTTL,
         maxStaleOnError: maxStaleOnError,
-        defaultPolicy: defaultPolicy,
-        now: { clock.now }
+        defaultPolicy: defaultPolicy
     )
 }
 

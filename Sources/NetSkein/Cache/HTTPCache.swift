@@ -85,7 +85,9 @@ public final class HTTPCache: Sendable {
         )
     }
 
-    init(
+    /// The full initializer, with the clock injected; `NetSkeinTesting` uses it for
+    /// `HTTPCache.testing(…)`.
+    package init(
         storage: any CacheStorage,
         maxEntryBytes: Int,
         defaultTTL: TimeAmount?,
