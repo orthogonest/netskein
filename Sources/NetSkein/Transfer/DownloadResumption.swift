@@ -12,14 +12,18 @@ public enum DownloadResumption: Equatable, Sendable {
     /// Attempts to resume an existing file already at the destination path (if present),
     /// as well as handling retry resumption.
     /// - Parameter validator: Optional known `ETag` or `Last-Modified` date to validate against.
+    ///   It must be strong: a weak `ETag` such as `W/"v1"` is ignored, because `If-Range` only
+    ///   accepts validators that guarantee identical bytes.
     case ifPossible(validator: String? = nil)
 }
 
 extension DownloadResumption {
-    var validator: String? {
-        switch self {
-        case let .ifPossible(validator): return validator
-        case .disabled, .onRetry: return nil
+    /// The caller's validator, to send as `If-Range`: `nil` when there is none, and for a weak
+    /// `ETag`, which `If-Range` does not allow (RFC 9110 §13.1.5).
+    var ifRangeValidator: String? {
+        guard case let .ifPossible(validator?) = self, !HTTPValidator.isWeak(validator) else {
+            return nil
         }
+        return validator
     }
 }

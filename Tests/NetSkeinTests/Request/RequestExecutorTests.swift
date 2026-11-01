@@ -460,6 +460,36 @@ extension RequestExecutorTests {
         #expect(fullFileString == "0123456789ABCDE")
     }
 
+    @Test("RequestExecutorTests: Verifies a weak ETag is never sent as If-Range")
+    func testDownloadResumptionIgnoresWeakValidator() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let destURL = tempDir.appendingPathComponent("test_resume_weak_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+        try Data("0123456789".utf8).write(to: destURL)
+
+        let sentHeaders = NIOLockedValueBox<HTTPHeaders>([:])
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/file.bin",
+            requestValidator: { request in sentHeaders.withLockedValue { $0 = request.headers } },
+            outcome: .response(
+                status: .partialContent,
+                headers: ["Content-Range": "bytes 10-14/15"],
+                body: ByteBuffer(string: "ABCDE")
+            )
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/file.bin")
+
+        try await executor.download(
+            to: destURL.path,
+            resumption: .ifPossible(validator: "W/\"weak\"")
+        )
+
+        #expect(sentHeaders.withLockedValue { $0 }.first(name: "Range") == "bytes=10-")
+        #expect(sentHeaders.withLockedValue { $0 }.contains(name: "If-Range") == false)
+    }
+
     @Test(
         "RequestExecutorTests: Verifies download resumption resets and overwrites when server returns 200 OK"
     )
