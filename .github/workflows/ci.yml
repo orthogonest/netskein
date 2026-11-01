@@ -83,3 +83,32 @@ jobs:
         run: |
           chmod +x ./Scripts/check-coverage.sh
           ./Scripts/check-coverage.sh
+
+  linux-test:
+    name: Linux Build + Tests (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Swift that Package.swift supports, and the newest release
+        swift: ["6.2", "6.3"]
+    container: swift:${{ matrix.swift }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Verify Host Swift Version
+        run: swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v6
+        with:
+          path: .build
+          key: >
+            linux-swift-${{ matrix.swift }}-${{
+            hashFiles('**/Package.resolved') }}
+          restore-keys: linux-swift-${{ matrix.swift }}-
+
+      - name: Run Tests
+        # Coverage is checked on macOS; Linux proves NetSkein builds and passes there
+        run: swift test --parallel
