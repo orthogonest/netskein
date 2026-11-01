@@ -4,7 +4,7 @@ import NIOHTTP1
 import Tracing
 
 public final class NetSkeinClient: Sendable {
-    let transport: any HTTPTransport
+    package let transport: any HTTPTransport
     let defaultHeaders: HTTPHeaders
     let retryPolicy: RetryPolicy
     let middlewares: [any HTTPMiddleware]
