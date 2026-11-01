@@ -20,24 +20,17 @@ Add the library to your test target only:
 A test builds a client with stubs, uses it like any other client, and checks the results:
 
 ```swift
-import NIOCore
 import NetSkein
 import NetSkeinTesting
 import Testing
 
-struct Profile: Decodable {
+struct Profile: Codable {
     let name: String
 }
 
 @Test func loadsTheProfile() async throws {
     let client = NetSkeinClient.testing()
-        .addStub(
-            HTTPStub(
-                method: .GET,
-                url: "https://api.example.com/me",
-                outcome: .response(status: .ok, headers: [:], body: ByteBuffer(string: #"{"name":"Ada"}"#))
-            )
-        )
+        .addStub(try HTTPStub.get("https://api.example.com/me").json(Profile(name: "Ada")))
         .build()
 
     let profile = try await client.get("https://api.example.com/me").send().json(Profile.self)
@@ -46,6 +39,8 @@ struct Profile: Decodable {
     #expect(client.mock?.requests.count == 1)
 }
 ```
+
+A stub starts with the method it answers, such as ``HTTPStub/get(_:)`` or ``HTTPStub/post(_:)``, and answers `200 OK` with no body until you describe the response with ``HTTPStub/status(_:)``, ``HTTPStub/header(_:_:)``, ``HTTPStub/text(_:)``, ``HTTPStub/json(_:encoder:)`` or ``HTTPStub/fail(with:)``. Several stubs for the same URL answer successive calls in order, which is how a test makes a request fail first and succeed on retry.
 
 Pass the client into the code under test the same way your app passes its production client. Because both are a `NetSkeinClient`, the code under test does not need to know it is being tested.
 

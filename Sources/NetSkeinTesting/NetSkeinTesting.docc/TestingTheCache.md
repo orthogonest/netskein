@@ -19,13 +19,7 @@ Stub a response with caching headers, send the request, and advance the clock pa
     let clock = TestClock()
     let client = NetSkeinClient.testing()
         .cache(.testing(clock: clock))
-        .addStub(
-            HTTPStub(
-                method: .GET,
-                url: "https://api.example.com/me",
-                outcome: .response(status: .ok, headers: ["Cache-Control": "max-age=60"])
-            )
-        )
+        .addStub(HTTPStub.get("https://api.example.com/me").header("Cache-Control", "max-age=60"))
         .build()
 
     _ = try await client.get("https://api.example.com/me").send()
@@ -70,5 +64,5 @@ By default, ``NetSkein/HTTPCache/testing(clock:storage:maxEntryBytes:defaultTTL:
 
 ### Limitations
 
-- ``MockHTTPClient/requests`` records each request's method, URL and headers. Request bodies cannot be read back from `HTTPClientRequest`; check them in an ``HTTPStub``'s ``HTTPStub/requestValidator``, or in a middleware.
+- ``MockHTTPClient/requests`` records each request's method, URL and headers. Request bodies cannot be read back from `HTTPClientRequest`; check them with ``HTTPStub/validate(_:)``, or in a middleware.
 - `DiskCacheStorage` orders files by their modification time after a restart. That uses the file system's real clock, not the ``TestClock``.
