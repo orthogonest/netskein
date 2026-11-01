@@ -48,7 +48,14 @@ Built natively on top of **SwiftNIO** and `async-http-client`, NetSkein provides
   - **Inbound Streaming:** Pipe response downloads directly into disk storage via `.download(toFileAtPath:)` using dynamic `HTTPResponseHead` mapping—retaining cookie and log continuity with a flat, constant RAM profile.
 - **Secure-by-Default Compression:** Automatic background decompression for `GZIP` and `Deflate` payloads protected by an absolute memory gate threshold (default: 10 MB) to neutralize malicious Zip Bomb exploits natively.
 
-### 5. Observability & Tracing Telemetry
+### 5. HTTP Caching
+
+- **RFC 9111 Private Cache:** Opt in with `.cache(HTTPCache(...))`. Fresh responses are reused without a network call, stale ones are revalidated with `ETag` / `Last-Modified` (a `304` reuses the stored body), and `Vary`, `no-store`, `no-cache`, `must-revalidate` and unsafe-method invalidation are honoured.
+- **Cache Policies:** Per request with `.cachePolicy(_:)`, or for every request with `cache.defaultPolicy` (switchable at runtime, e.g. for an offline mode): `.reloadIgnoringCache`, `.noStore` for sensitive responses, `.returnCacheElseLoad`, `.onlyIfCached` (answers `504` on a miss), or `.fresh(for:)` to cache endpoints whose backend forbids caching.
+- **Offline Friendly:** `defaultTTL` for responses without caching headers, and `maxStaleOnError` to return the last good response, up to a chosen age, when the network or server fails.
+- **Observable:** Every response carries an RFC 9211 `Cache-Status` header, also recorded in logs and on the request span.
+
+### 6. Observability & Tracing Telemetry
 
 - **Distributed Tracing Synchronization:** NetSkein functions as a first-class citizen inside microservice grids. Every request generates a unique correlation token injected into the outbound `"X-Request-ID"` HTTP header and evaluates incoming response overrides to map trace flows globally.
 - **`swift-log` Integration:** Telemetry logs map out lifetimes, processing durations, and failure footprints through lightweight, non-blocking asynchronous console tracking.
@@ -125,6 +132,30 @@ let formPayload = NetSkeinMultipartForm.builder.text(name: "caption", value: "Su
 
 let response = try await client.post("https://example.com").multipart(formPayload).send()
 ```
+
+### 4. HTTP Caching
+
+```swift
+let cache = HTTPCache(
+    storage: MemoryCacheStorage(maxBytes: 20 * 1024 * 1024),
+    defaultTTL: .minutes(1),        // for responses without caching headers
+    maxStaleOnError: .hours(24)     // when offline or the server fails, show data up to a day old
+)
+let client = NetSkeinClient.builder().cache(cache).build()
+
+let profile = try await client.get("https://api.example.com/me").send()
+profile.headers.first(name: "Cache-Status")   // "NetSkein; hit" when served from the cache
+
+// Reference data from a backend that sends `Cache-Control: no-store` on everything
+let countries = try await client.get("https://api.example.com/countries")
+    .cachePolicy(.fresh(for: .hours(1)))
+    .send()
+
+// On logout
+await cache.removeAll()
+```
+
+Only `send()` uses the cache; `stream` and `download` always go to the network. Responses that set cookies are stored without `Set-Cookie`, and responses that arrived through a redirect are not stored.
 
 ## License
 

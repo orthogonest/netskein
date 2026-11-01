@@ -121,6 +121,29 @@ extension NetSkeinRequestTests {
     }
 
     @Test(
+        "NetSkeinRequestTests: Verifies query items are sorted by name after the URL's existing query"
+    )
+    func testQueryOrderIsStable() async throws {
+        let sentURL = NIOLockedValueBox<String?>(nil)
+        let stub = HTTPStub(
+            method: .GET,
+            urlMatcher: { $0.hasPrefix("https://api.example.com/search") },
+            requestValidator: { request in sentURL.withLockedValue { $0 = request.url } },
+            outcome: .response(status: .ok, headers: [:], body: nil)
+        )
+        let client = NetSkeinClient.testing().addStub(stub).build()
+
+        _ = try await client.get("https://api.example.com/search?z=0")
+            .query(["q": "swift", "page": "1", "lang": "en", "sort": "new", "a": "x"])
+            .send()
+
+        #expect(
+            sentURL.withLockedValue { $0 }
+                == "https://api.example.com/search?z=0&a=x&lang=en&page=1&q=swift&sort=new"
+        )
+    }
+
+    @Test(
         "NetSkeinRequestTests: Verifies query returns self when URLComponents fails to parse malformed port"
     )
     func testQueryMalformedURLFallback() async throws {

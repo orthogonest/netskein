@@ -23,6 +23,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var automaticDecompression: Bool
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit
     private var cookieJar: CookieJar?
+    private var cache: HTTPCache?
     private var retryPolicy: RetryPolicy
     private var middlewares: [any HTTPMiddleware]
     private var tlsConfiguration: TLSConfiguration?
@@ -119,6 +120,14 @@ extension NetSkeinClientBuilder {
     public func cookieJar(_ jar: CookieJar) -> Self {
         var copy = self
         copy.cookieJar = jar
+        return copy
+    }
+
+    /// Caches responses as described by ``HTTPCache``.
+    @discardableResult
+    public func cache(_ cache: HTTPCache) -> Self {
+        var copy = self
+        copy.cache = cache
         return copy
     }
 
@@ -230,6 +239,8 @@ extension NetSkeinClientBuilder {
             transport: transport,
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
+            cache: cache,
+            transportDecompresses: automaticDecompression,
             retryPolicy: retryPolicy,
             middlewares: middlewares,
             tracer: resolvedTracer,

@@ -102,14 +102,15 @@ extension RequestExecutor {
             Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / Nanoseconds.toSeconds
         let activeResponseID = response.headers["X-Request-ID"].first ?? context.requestID
 
-        context.logger.info(
-            "Response received",
-            metadata: [
-                "request_id": .string(activeResponseID),
-                "status_code": .string("\(response.status.code)"),
-                "duration_seconds": .string(String(format: "%.4f", duration)),
-            ]
-        )
+        var metadata: Logger.Metadata = [
+            "request_id": .string(activeResponseID),
+            "status_code": .string("\(response.status.code)"),
+            "duration_seconds": .string(String(format: "%.4f", duration)),
+        ]
+        if let cacheStatus = response.headers.netSkeinCacheStatus {
+            metadata["cache_status"] = .string(cacheStatus)
+        }
+        context.logger.info("Response received", metadata: metadata)
     }
 
     private func mapError(
@@ -183,6 +184,9 @@ extension RequestExecutor {
             let received = try await execute(head, context, action: operation.action)
             response = received
             span?.attributes["http.response.status_code"] = Int(received.status.code)
+            if let cacheStatus = received.headers.netSkeinCacheStatus {
+                span?.attributes["netskein.cache_status"] = cacheStatus
+            }
             recordResponse(received, context, startedAt: startTime)
 
             let result = try await operation.handle(received, logger: context.logger)
@@ -374,8 +378,12 @@ private struct AttemptSetup {
 }
 
 /// Collects the whole response body in memory.
-private struct SendOperation: RequestOperation {
+private struct SendOperation {
     let maxResponseBytes: Int
+}
+
+extension SendOperation: RequestOperation {
+    typealias Output = NetSkeinResponse
 
     var name: String { "send" }
     var action: String { "Network request" }
@@ -386,40 +394,47 @@ private struct SendOperation: RequestOperation {
         AttemptSetup(description: "outbound network request")
     }
 
-    func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> NetSkeinResponse {
+    func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output {
         try await NetSkeinResponse(underlyingResponse: response, maxBytes: maxResponseBytes)
     }
 }
 
 /// Hands each chunk of a successful response to the caller as it arrives.
-private struct StreamOperation: RequestOperation {
+private struct StreamOperation {
     let onChunk: ChunkHandler
+    private var _hasDeliveredData: Bool
+
+    // Set here rather than as a property default, which coverage reports as never run
+    init(onChunk: @escaping ChunkHandler) {
+        self.onChunk = onChunk
+        _hasDeliveredData = false
+    }
+}
+
+extension StreamOperation: RequestOperation {
+    typealias Output = (status: HTTPResponseStatus, headers: HTTPHeaders)
 
     var name: String { "stream" }
     var action: String { "Streaming request" }
     var isBuffered: Bool { false }
-    private(set) var hasDeliveredData = false
+    var hasDeliveredData: Bool { _hasDeliveredData }
 
     func prepareAttempt() -> AttemptSetup {
         AttemptSetup(description: "outbound streaming request")
     }
 
-    mutating func handle(
-        _ response: HTTPClientResponse,
-        logger: Logger
-    ) async throws -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
+    mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output {
         guard response.status.code >= 200 && response.status.code < 300 else {
             throw NetSkeinError.badStatus(response.status)
         }
 
-        let expectedBytes = response.headers.first(name: "Content-Length")
-            .flatMap(Int64.init)
+        let expectedBytes = response.headers.first(name: "Content-Length").flatMap(Int64.init)
         var receivedBytes: Int64 = 0
 
         for try await buffer in response.body {
             try checkCancellation()
             receivedBytes += Int64(buffer.readableBytes)
-            hasDeliveredData = true
+            _hasDeliveredData = true
             do {
                 try await onChunk(buffer, receivedBytes, expectedBytes)
             } catch {
@@ -442,22 +457,16 @@ private struct StreamOperation: RequestOperation {
 
 /// Writes a successful response to a file, resuming a partial file with `Range` requests
 /// when the caller allows it.
-private struct DownloadOperation: RequestOperation {
+private struct DownloadOperation {
     let path: String
     let resumption: DownloadResumption
     /// Only `GET` requests can be resumed with `Range`.
     let canResume: Bool
     let onProgress: DownloadProgress?
 
-    var name: String { "download" }
-    var action: String { "Streaming download" }
-    var isBuffered: Bool { false }
-    /// A retry rewrites the file or resumes it where it stopped, so nothing is duplicated.
-    var hasDeliveredData: Bool { false }
-
     /// How much of the file already exists before the current attempt.
     private var existingBytes: Int64 = 0
-    /// The server's `ETag` or `Last-Modified`, sent as `If-Range` when resuming.
+    /// The strong validator of the bytes on disk, sent as `If-Range` when resuming.
     private var validator: String?
 
     init(
@@ -470,7 +479,7 @@ private struct DownloadOperation: RequestOperation {
         self.resumption = resumption
         self.canResume = canResume
         self.onProgress = onProgress
-        self.validator = resumption.validator
+        self.validator = resumption.ifRangeValidator
     }
 }
 
@@ -484,23 +493,13 @@ extension DownloadOperation {
         FileManager.default.createFile(atPath: path, contents: nil)
     }
 
-    /// Measures what is already on disk and, when possible, asks only for the missing bytes.
-    mutating func prepareAttempt() -> AttemptSetup {
-        existingBytes = resumableFileSize()
-
-        guard existingBytes > 0 && canResume else {
-            return AttemptSetup(description: "file download")
-        }
-
-        var headers: HTTPHeaders = ["Range": "bytes=\(existingBytes)-"]
-        if let validator {
-            headers.add(name: "If-Range", value: validator)
-        }
-
-        return AttemptSetup(
-            description: "download resumption from byte \(existingBytes)",
-            extraHeaders: headers
-        )
+    private func resumableFileSize() -> Int64 {
+        guard
+            resumption != .disabled,
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+            let size = attributes[.size] as? Int64
+        else { return 0 }
+        return size
     }
 
     /// Remembers the server's validator and rejects responses that cannot be written.
@@ -508,11 +507,7 @@ extension DownloadOperation {
         _ response: HTTPClientResponse,
         logger: Logger
     ) throws(NetSkeinError) {
-        if let etag = response.headers.first(name: "ETag") {
-            validator = etag
-        } else if let lastModified = response.headers.first(name: "Last-Modified") {
-            validator = lastModified
-        }
+        validator = HTTPValidator(response.headers).ifRange
 
         // 416 Range Not Satisfiable: start the file over so the retry downloads it in full
         if response.status == .rangeNotSatisfiable {
@@ -525,22 +520,6 @@ extension DownloadOperation {
         guard response.status.code >= 200 && response.status.code < 300 else {
             throw .badStatus(response.status)
         }
-    }
-
-    private func resumableFileSize() -> Int64 {
-        guard
-            resumption != .disabled,
-            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-            let size = attributes[.size] as? Int64
-        else { return 0 }
-        return size
-    }
-
-    /// Remembers the server's validator, rejects responses that cannot be written, and writes
-    /// the rest.
-    mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws {
-        try accept(response, logger: logger)
-        try await writeBody(of: response, logger: logger)
     }
 
     /// Writes the body to the file: appending after a `206 Partial Content`, otherwise
@@ -646,6 +625,42 @@ extension DownloadOperation {
                 underlyingError: error
             )
         }
+    }
+}
+
+extension DownloadOperation: RequestOperation {
+    typealias Output = Void
+
+    var name: String { "download" }
+    var action: String { "Streaming download" }
+    var isBuffered: Bool { false }
+    /// A retry rewrites the file or resumes it where it stopped, so nothing is duplicated.
+    var hasDeliveredData: Bool { false }
+
+    /// Measures what is already on disk and, when possible, asks only for the missing bytes.
+    mutating func prepareAttempt() -> AttemptSetup {
+        existingBytes = resumableFileSize()
+
+        guard existingBytes > 0 && canResume else {
+            return AttemptSetup(description: "file download")
+        }
+
+        var headers: HTTPHeaders = ["Range": "bytes=\(existingBytes)-"]
+        if let validator {
+            headers.add(name: "If-Range", value: validator)
+        }
+
+        return AttemptSetup(
+            description: "download resumption from byte \(existingBytes)",
+            extraHeaders: headers
+        )
+    }
+
+    /// Remembers the server's validator, rejects responses that cannot be written, and writes
+    /// the rest.
+    mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output {
+        try accept(response, logger: logger)
+        try await writeBody(of: response, logger: logger)
     }
 }
 

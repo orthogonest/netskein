@@ -39,6 +39,22 @@ struct RetryAfterParserTests {
         #expect(RetryAfterParser.parseDelay(from: headers) == .nanoseconds(0))
     }
 
+    @Test("RetryAfterParserTests: Verifies obsolete HTTP-date formats are accepted too")
+    func testRetryAfterObsoleteHTTPDate() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+
+        var headers = HTTPHeaders()
+        headers.add(
+            name: "Retry-After",
+            value: formatter.string(from: Date().addingTimeInterval(60))
+        )
+
+        #expect((RetryAfterParser.parseDelay(from: headers)?.nanoseconds ?? 0) > 0)
+    }
+
     @Test("RetryAfterParserTests: Verifies returns nil for missing, negative, or malformed headers")
     func testRetryAfterInvalidHeaders() {
         // Missing header
