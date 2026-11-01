@@ -1,12 +1,7 @@
+import Foundation
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// A private HTTP cache that follows RFC 9111.
 ///

@@ -1,14 +1,10 @@
 import AsyncHTTPClient
+import Dispatch
+import Foundation
 import Logging
 import NIOCore
 import NIOHTTP1
 import Tracing
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 struct RequestExecutor: Sendable {
     let client: NetSkeinClient

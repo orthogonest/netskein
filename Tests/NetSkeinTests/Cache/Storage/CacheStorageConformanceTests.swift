@@ -1,14 +1,9 @@
+import Foundation
 import NIOCore
 import NIOHTTP1
 import Testing
 
 @testable import NetSkein
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// The behaviour every ``CacheStorage`` shares, run against each implementation.
 struct CacheStorageConformanceTests {

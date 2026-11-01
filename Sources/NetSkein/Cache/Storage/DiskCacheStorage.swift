@@ -1,3 +1,4 @@
+import Foundation
 import NIOCore
 import NIOPosix
 
@@ -9,12 +10,6 @@ import NIOPosix
     import Musl
 #elseif canImport(Bionic)
     import Bionic
-#endif
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
 #endif
 
 /// Keeps cached responses in files, so they survive restarts, evicting the least recently used

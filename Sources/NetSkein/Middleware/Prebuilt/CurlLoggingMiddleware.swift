@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Foundation
 import Logging
 import NIOCore
+import NIOHTTP1
 
 /// Logs each attempt's request as a `curl` command that can be pasted into a terminal.
 ///

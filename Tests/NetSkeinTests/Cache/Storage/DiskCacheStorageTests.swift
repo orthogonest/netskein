@@ -1,15 +1,10 @@
+import Foundation
 import NIOCore
 import NIOHTTP1
 import NetSkeinTesting
 import Testing
 
 @testable import NetSkein
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 struct DiskCacheStorageTests {
     let url = "https://api.example.com/items"

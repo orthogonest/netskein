@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Foundation
 import Logging
 import NIOHTTP1
 import Tracing

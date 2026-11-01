@@ -1,6 +1,7 @@
 // No `@testable`: these tests use only the API available to NetSkein users
 import AsyncHTTPClient
 import NIOConcurrencyHelpers
+import NIOHTTP1
 import NetSkein
 import NetSkeinTesting
 import Testing

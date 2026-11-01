@@ -1,12 +1,7 @@
 import AsyncHTTPClient
+import Foundation
 import NIOCore
 import NIOHTTP1
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// A response kept by an ``HTTPCache``, with what the cache needs to judge whether it can
 /// still be used.

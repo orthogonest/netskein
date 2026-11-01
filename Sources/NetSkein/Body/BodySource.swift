@@ -1,11 +1,6 @@
 import AsyncHTTPClient
+import Foundation
 import NIOCore
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 enum BodySource: Sendable {
     case none

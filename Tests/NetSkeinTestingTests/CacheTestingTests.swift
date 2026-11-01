@@ -1,15 +1,10 @@
 import AsyncHTTPClient
+import Foundation
 import NIOCore
 import NIOHTTP1
 import NetSkein
 import NetSkeinTesting
 import Testing
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// Uses only the public API, the way an app's tests would.
 struct CacheTestingTests {

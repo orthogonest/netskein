@@ -1,4 +1,4 @@
-// swift-tools-version: 6.1
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
@@ -24,6 +24,7 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOHTTPCompression", package: "swift-nio-extras"),
                 .product(name: "NIOPosix", package: "swift-nio"),
@@ -50,6 +51,7 @@ let package = Package(
             dependencies: [
                 "NetSkein",
                 "NetSkeinTesting",
+                .product(name: "NIOHTTPCompression", package: "swift-nio-extras"),
                 .product(name: "InMemoryTracing", package: "swift-distributed-tracing"),
             ],
             path: "Tests/NetSkeinTests",
@@ -65,3 +67,12 @@ let package = Package(
         ),
     ]
 )
+
+// Every file must import the modules whose extensions it uses, so code that compiles on one
+// platform cannot depend on extensions that only leak in there through another dependency
+for target in package.targets {
+    target.swiftSettings =
+        (target.swiftSettings ?? []) + [
+            .enableUpcomingFeature("MemberImportVisibility")
+        ]
+}

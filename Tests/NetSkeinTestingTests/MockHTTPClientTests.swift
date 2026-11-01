@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import NIOConcurrencyHelpers
 import NIOCore
+import NIOHTTP1
 import Testing
 
 @testable import NetSkein

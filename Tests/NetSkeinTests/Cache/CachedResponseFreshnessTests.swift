@@ -1,14 +1,10 @@
+import AsyncHTTPClient
+import Foundation
 import NIOCore
 import NIOHTTP1
 import Testing
 
 @testable import NetSkein
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 struct CachedResponseFreshnessTests {
     let received = Date(timeIntervalSince1970: 1_700_000_000)
@@ -31,11 +27,7 @@ struct CachedResponseFreshnessTests {
     }
 
     func httpDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
-        return formatter.string(from: date)
+        HTTPDate.string(from: date)
     }
 }
 

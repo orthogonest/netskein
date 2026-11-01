@@ -621,7 +621,8 @@ extension RequestExecutorTests {
     }
 
     @Test(
-        "RequestExecutorTests: Verifies download throws ioFailure when 206 append fails due to read-only file"
+        "RequestExecutorTests: Verifies download throws ioFailure when 206 append fails due to read-only file",
+        .disabled(if: getuid() == 0, "Root ignores file permissions, as in Linux containers")
     )
     func testDownloadAppendHandleFailure() async throws {
         let tempDir = FileManager.default.temporaryDirectory
@@ -1362,20 +1363,32 @@ extension RequestExecutorTests {
     /// Swaps the process's open write descriptor for `path` with a read-only one, so the next write fails.
     private func revokeWriteAccess(toOpenFileAt path: String) {
         let targetPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
 
-        for fd in 0..<getdtablesize() where fcntl(fd, F_GETPATH, &buffer) != -1 {
-            let openPath = String(
-                decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
-                as: UTF8.self
-            )
-            guard URL(fileURLWithPath: openPath).resolvingSymlinksInPath().path == targetPath
+        for fd in 0..<getdtablesize() {
+            guard
+                let openPath = openFilePath(of: fd),
+                URL(fileURLWithPath: openPath).resolvingSymlinksInPath().path == targetPath
             else { continue }
 
             let readOnlyFD = open(path, O_RDONLY)
             dup2(readOnlyFD, fd)
             close(readOnlyFD)
         }
+    }
+
+    /// The path of the file open at descriptor `fd`, or `nil` when none is.
+    private func openFilePath(of fd: Int32) -> String? {
+        #if canImport(Darwin)
+            var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+            guard fcntl(fd, F_GETPATH, &buffer) != -1 else { return nil }
+            return String(
+                decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                as: UTF8.self
+            )
+        #else
+            // Linux lists each open descriptor as a symbolic link to its file
+            return try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/fd/\(fd)")
+        #endif
     }
 }
 

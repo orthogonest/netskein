@@ -346,7 +346,8 @@ extension NetSkeinRequestTests {
     }
 
     @Test(
-        "NetSkeinRequestTests: Verifies stream throws ioFailure when file exists but has no read permissions"
+        "NetSkeinRequestTests: Verifies stream throws ioFailure when file exists but has no read permissions",
+        .disabled(if: getuid() == 0, "Root ignores file permissions, as in Linux containers")
     )
     func testStreamUnreadableFileThrowsIOFailure() throws {
         let tempDir = FileManager.default.temporaryDirectory

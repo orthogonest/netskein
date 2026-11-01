@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Foundation
 
 enum MiddlewareChain {
     /// Sends `head` through `middlewares` in order, ending at `transport`.

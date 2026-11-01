@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import Foundation
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
@@ -6,12 +7,6 @@ import NIOHTTP1
 
 @testable import NetSkein
 @testable import NetSkeinTesting
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// Answers each request with the next scripted reply and records what was sent.
 final class ScriptedTransport: HTTPTransport {

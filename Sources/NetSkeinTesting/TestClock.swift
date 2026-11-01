@@ -1,11 +1,6 @@
+import Foundation
 import NIOConcurrencyHelpers
 import NIOCore
-
-#if canImport(FoundationEssentials)
-    import FoundationEssentials
-#else
-    import Foundation
-#endif
 
 /// A clock that only moves when a test tells it to.
 ///
