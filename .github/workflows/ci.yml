@@ -46,7 +46,7 @@ jobs:
             --color=always \
             --all-files
 
-  build-test:
+  macos-test:
     name: Build + Tests + Coverage
     runs-on: macos-latest
     steps:
@@ -106,9 +106,8 @@ jobs:
           path: .build
           key: >
             linux-swift-${{ matrix.swift }}-${{
-            hashFiles('**/Package.resolved') }}
+            hashFiles('Package.resolved') }}
           restore-keys: linux-swift-${{ matrix.swift }}-
 
       - name: Run Tests
-        # Coverage is checked on macOS; Linux proves NetSkein builds and passes there
         run: swift test --parallel
