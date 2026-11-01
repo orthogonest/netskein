@@ -90,7 +90,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest Swift that Package.swift supports, and the newest release
         swift: ["6.2", "6.3"]
     container: swift:${{ matrix.swift }}
     steps:
