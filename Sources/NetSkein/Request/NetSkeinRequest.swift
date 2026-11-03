@@ -10,7 +10,8 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
     private var url: String
     private var headers: HTTPHeaders
     private var body: BodySource
-    private var maxResponseBytes: Int
+    /// `nil` means no limit.
+    private var maxResponseBytes: Int?
     private var timeout: TimeAmount?
     private var retryPolicy: RetryPolicy?
     private var middlewares: [any HTTPMiddleware]
@@ -23,7 +24,7 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         url: String,
         headers: HTTPHeaders? = nil,
         body: BodySource = .none,
-        maxResponseBytes: Int = 10 * 1024 * 1024,
+        maxResponseBytes: Int? = 10 * 1024 * 1024,
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
         middlewares: [any HTTPMiddleware] = [],
@@ -50,7 +51,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         method: HTTPMethod,
         url: String,
         headers: HTTPHeaders? = nil,
-        maxResponseBytes: Int = 10 * 1024 * 1024,
+        maxResponseBytes: Int? = 10 * 1024 * 1024,
         timeout: TimeAmount? = nil,
         retryPolicy: RetryPolicy? = nil,
         percentEncoder: PercentEncoder = .default,
@@ -105,8 +106,16 @@ extension NetSkeinRequest {
         return copy
     }
 
+    /// The largest response body ``send()`` collects into memory; a larger one fails with a
+    /// `networkFailure`. Defaults to 10 MiB; `nil` removes the limit, so the whole body is held
+    /// in memory however large it is.
+    ///
+    /// Only ``send()`` holds the whole body, so only it is limited. ``stream()``,
+    /// ``stream(_:)``, ``lines(maxLineLength:)`` and
+    /// ``download(toFileAtPath:resumption:onProgress:)`` read the body piece by piece and have no
+    /// total limit; ``lines(maxLineLength:)`` limits each line instead.
     @discardableResult
-    public func maxResponseBytes(_ bytes: Int) -> Self {
+    public func maxResponseBytes(_ bytes: Int?) -> Self {
         var copy = self
         copy.maxResponseBytes = bytes
         return copy
@@ -434,6 +443,8 @@ extension NetSkeinRequest {
             headers.add(name: "Cache-Control", value: directive)
         }
 
+        let responseLimit = maxResponseBytes ?? .max
+
         // The cache sits next to the transport, so it sees the request exactly as sent
         let cache = client.cache.map {
             CacheMiddleware(
@@ -441,7 +452,7 @@ extension NetSkeinRequest {
                 policy: policy,
                 usesStoredResponses: buffered,
                 transportDecompresses: client.transportDecompresses,
-                maxResponseBytes: maxResponseBytes
+                maxResponseBytes: responseLimit
             )
         }
 
@@ -453,7 +464,7 @@ extension NetSkeinRequest {
             body: body,
             timeout: timeout,
             retryPolicy: retryPolicy,
-            maxResponseBytes: maxResponseBytes,
+            maxResponseBytes: responseLimit,
             middlewares: client.middlewares + middlewares + (cache.map { [$0] } ?? []),
         )
     }
@@ -490,6 +501,59 @@ extension NetSkeinRequest {
         _ onChunk: @escaping ChunkHandler
     ) async throws(NetSkeinError) -> (status: HTTPResponseStatus, headers: HTTPHeaders) {
         try await executor(buffered: false).stream(onChunk)
+    }
+
+    /// Sends the request and returns the response as soon as its headers arrive, with the body
+    /// to be read piece by piece as it arrives:
+    ///
+    /// ```swift
+    /// let response = try await client.get(url).stream()
+    /// for try await chunk in response { … }
+    /// ```
+    ///
+    /// This is the pull-based form of ``stream(_:)``: the loop asks for each piece, so reading
+    /// keeps pace with it. See ``NetSkeinStream`` for iterating.
+    ///
+    /// ## Retries
+    ///
+    /// The retry policy applies until the headers arrive: a connection failure or a retryable
+    /// status such as `503` is retried like ``send()``. Once this method returns, a failure while
+    /// reading the body is thrown from the loop and never retried.
+    ///
+    /// The response is not cached, and the request's span ends when the headers arrive. The
+    /// body has no size limit; see ``maxResponseBytes(_:)``.
+    ///
+    /// - Returns: The response, with its body still to be read.
+    /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, or the
+    ///   failure that remains once the retry policy gives up.
+    public func stream() async throws(NetSkeinError) -> NetSkeinStream {
+        NetSkeinStream(try await executor(buffered: false).openStream())
+    }
+
+    /// Sends the request and returns its body as lines, each delivered as soon as its line ending
+    /// arrives:
+    ///
+    /// ```swift
+    /// for try await line in try await client.get(url).lines() {
+    ///     print(line)
+    /// }
+    /// ```
+    ///
+    /// Meant for line-based formats such as server-sent events, JSON Lines and log streams. A
+    /// body without line endings arrives as a single line once it ends. See ``NetSkeinLines`` for
+    /// how lines are split, and ``stream()`` for retries, caching and tracing, which work the same.
+    ///
+    /// - Parameter maxLineLength: The longest line accepted, in bytes; a longer one makes the loop
+    ///   throw `invalidPayload`, so a server cannot make one endless line use unbounded memory.
+    ///   Defaults to 1 MiB; `nil` removes the limit, so a line is held in memory however long it
+    ///   gets.
+    /// - Returns: The response, with its body still to be read.
+    /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, or the
+    ///   failure that remains once the retry policy gives up.
+    public func lines(
+        maxLineLength: Int? = 1024 * 1024
+    ) async throws(NetSkeinError) -> NetSkeinLines {
+        try await stream().lines(maxLineLength: maxLineLength)
     }
 
     public func download(
