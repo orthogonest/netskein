@@ -319,6 +319,12 @@ extension RequestExecutor {
         try await run(StreamOperation(onChunk: onChunk))
     }
 
+    /// Sends the request and returns the response once its headers arrive, with the body still
+    /// to be read; retries end there.
+    func openStream() async throws(NetSkeinError) -> HTTPClientResponse {
+        try await run(OpenStreamOperation())
+    }
+
     func download(
         to path: String,
         resumption: DownloadResumption = .disabled,
@@ -448,6 +454,27 @@ extension StreamOperation: RequestOperation {
         )
 
         return (response.status, response.headers)
+    }
+}
+
+/// Returns a successful response with its body unread, for the caller to pull from.
+private struct OpenStreamOperation: RequestOperation {
+    typealias Output = HTTPClientResponse
+
+    var name: String { "stream" }
+    var action: String { "Streaming request" }
+    var isBuffered: Bool { false }
+    var hasDeliveredData: Bool { false }
+
+    func prepareAttempt() -> AttemptSetup {
+        AttemptSetup(description: "outbound streaming request")
+    }
+
+    func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output {
+        guard response.status.code >= 200 && response.status.code < 300 else {
+            throw NetSkeinError.badStatus(response.status)
+        }
+        return response
     }
 }
 
@@ -662,7 +689,7 @@ extension DownloadOperation: RequestOperation {
 
 // MARK: - Cancellation
 
-private func checkCancellation() throws(NetSkeinError) {
+func checkCancellation() throws(NetSkeinError) {
     if Task.isCancelled {
         throw .custom(
             kind: .networkFailure,
