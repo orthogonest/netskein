@@ -25,6 +25,7 @@ struct NetSkeinClientBuilderTests {
         #expect(mirror.descendant("writeTimeout") as? TimeAmount == .seconds(30))
         #expect(mirror.descendant("automaticDecompression") as? Bool == true)
         #expect(mirror.descendant("acceptInvalidCertificates") as? Bool == false)
+        #expect(mirror.descendant("httpVersion") as? HTTPVersionPolicy == .automatic)
     }
 }
 
@@ -50,6 +51,7 @@ extension NetSkeinClientBuilderTests {
             .eventLoopGroupProvider(.shared(HTTPClient.defaultEventLoopGroup))
             .proxy(customProxy)
             .redirectPolicy(.disabled)
+            .httpVersion(.http1Only)
             .automaticDecompression(false)
             .decompressionLimit(.size(1024))
             .cookieJar(customJar)
@@ -65,6 +67,7 @@ extension NetSkeinClientBuilderTests {
         #expect(mirror.descendant("writeTimeout") as? TimeAmount == .seconds(20))
         #expect(mirror.descendant("automaticDecompression") as? Bool == false)
         #expect(mirror.descendant("acceptInvalidCertificates") as? Bool == true)
+        #expect(mirror.descendant("httpVersion") as? HTTPVersionPolicy == .http1Only)
         #expect(mirror.descendant("cookieJar") as? CookieJar === customJar)
     }
 }

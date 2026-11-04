@@ -20,6 +20,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var eventLoopGroupProvider: HTTPClient.EventLoopGroupProvider
     private var proxy: Proxy?
     private var redirectPolicy: RedirectPolicy
+    private var httpVersion: HTTPVersionPolicy
     private var automaticDecompression: Bool
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit
     private var cookieJar: CookieJar?
@@ -38,6 +39,7 @@ public struct NetSkeinClientBuilder: Sendable {
         defaultHeaders = HTTPHeaders()
         eventLoopGroupProvider = .singleton
         redirectPolicy = .default
+        httpVersion = .automatic
         automaticDecompression = true
         decompressionLimit = .size(10 * 1024 * 1024)
         retryPolicy = .disabled
@@ -97,6 +99,13 @@ extension NetSkeinClientBuilder {
     public func redirectPolicy(_ policy: RedirectPolicy) -> Self {
         var copy = self
         copy.redirectPolicy = policy
+        return copy
+    }
+
+    @discardableResult
+    public func httpVersion(_ policy: HTTPVersionPolicy) -> Self {
+        var copy = self
+        copy.httpVersion = policy
         return copy
     }
 
@@ -211,6 +220,7 @@ extension NetSkeinClientBuilder {
         if let proxy { config.proxy = proxy.underlyingProxy }
 
         config.redirectConfiguration = redirectPolicy.underlyingConfiguration
+        config.httpVersion = httpVersion.underlyingVersion
 
         var tlsConfig = tlsConfiguration ?? TLSConfiguration.makeClientConfiguration()
         if acceptInvalidCertificates { tlsConfig.certificateVerification = .none }
