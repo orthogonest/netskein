@@ -47,7 +47,7 @@ jobs:
             --all-files
 
   macos-test:
-    name: Build + Tests + Coverage
+    name: MacOS Build + Tests + Coverage
     runs-on: macos-latest
     steps:
       - name: Checkout repository
