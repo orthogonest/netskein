@@ -13,6 +13,7 @@ public final class NetSkeinClient: Sendable {
     /// Middleware that runs once per call, around all of its attempts.
     let callMiddlewares: [any HTTPMiddleware]
     let cache: HTTPCache?
+    let circuitBreaker: CircuitBreaker?
     /// Whether the transport decompresses response bodies but keeps their `Content-Encoding`.
     let transportDecompresses: Bool
     let tracer: (any Tracer)?
@@ -34,6 +35,9 @@ public final class NetSkeinClient: Sendable {
 
     /// Creates a client that sends requests through `transport`.
     ///
+    /// Requests to failing servers are rejected as described by ``CircuitBreaker`` when
+    /// `circuitBreaker` is set.
+    ///
     /// Responses are cached as described by ``HTTPCache`` when `cache` is set. The transport must
     /// not decompress response bodies; build the client with ``NetSkeinClientBuilder`` to combine
     /// caching with automatic decompression.
@@ -42,6 +46,7 @@ public final class NetSkeinClient: Sendable {
         defaultHeaders: HTTPHeaders = .init(),
         cookieJar: CookieJar? = nil,
         cache: HTTPCache? = nil,
+        circuitBreaker: CircuitBreaker? = nil,
         transportDecompresses: Bool = false,
         retryPolicy: RetryPolicy = .disabled,
         attemptMiddlewares: [any HTTPMiddleware] = [],
@@ -57,6 +62,7 @@ public final class NetSkeinClient: Sendable {
             (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + attemptMiddlewares
         self.callMiddlewares = callMiddlewares
         self.cache = cache
+        self.circuitBreaker = circuitBreaker
         self.transportDecompresses = transportDecompresses
         self.tracer = tracer
         self.logger = logger

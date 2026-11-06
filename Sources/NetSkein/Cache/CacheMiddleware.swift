@@ -486,10 +486,3 @@ extension String {
         "NetSkein; \(parameters)"
     }
 }
-
-extension HTTPResponseStatus {
-    /// The statuses RFC 5861 §4 treats as the server failing, rather than answering.
-    fileprivate var isServerFailure: Bool {
-        [500, 502, 503, 504].contains(code)
-    }
-}
