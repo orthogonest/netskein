@@ -17,6 +17,9 @@ struct DownloadOperation {
     private var existingBytes: Int64 = 0
     /// The strong validator of the bytes on disk, sent as `If-Range` when resuming.
     private var validator: String?
+    /// The head of the response written to the file.
+    private var writtenStatus: HTTPResponseStatus
+    private var writtenHeaders: HTTPHeaders
 
     init(
         path: String,
@@ -29,6 +32,8 @@ struct DownloadOperation {
         self.canResume = canResume
         self.onProgress = onProgress
         self.validator = resumption.ifRangeValidator
+        self.writtenStatus = .ok
+        self.writtenHeaders = [:]
     }
 }
 
@@ -210,5 +215,12 @@ extension DownloadOperation: RequestOperation {
     mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output {
         try accept(response, logger: logger)
         try await writeBody(of: response, logger: logger)
+        writtenStatus = response.status
+        writtenHeaders = response.headers
+    }
+
+    /// The head of the response written to the file; its body is already on disk.
+    func response(for output: Output) -> HTTPClientResponse {
+        HTTPClientResponse(status: writtenStatus, headers: writtenHeaders)
     }
 }

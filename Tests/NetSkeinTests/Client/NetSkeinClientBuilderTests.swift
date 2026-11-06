@@ -130,9 +130,26 @@ extension NetSkeinClientBuilderTests {
             .using { request, _, next in try await next(request) }
             .build()
 
-        #expect(client.middlewares.count == 2)
-        #expect(client.middlewares.first is PassThroughMiddleware)
-        #expect(client.middlewares.last is ClosureMiddleware)
+        #expect(client.attemptMiddlewares.count == 2)
+        #expect(client.attemptMiddlewares.first is PassThroughMiddleware)
+        #expect(client.attemptMiddlewares.last is ClosureMiddleware)
+        #expect(client.callMiddlewares.isEmpty)
+
+        try await client.shutdown()
+    }
+
+    @Test(
+        "NetSkeinClientBuilderTests: Verifies using per call registers middleware outside the retries"
+    )
+    func testUsingPerCall() async throws {
+        let client = NetSkeinClient.builder()
+            .using(PassThroughMiddleware(), per: .call)
+            .using(per: .call) { request, _, next in try await next(request) }
+            .build()
+
+        #expect(client.callMiddlewares.count == 2)
+        #expect(client.callMiddlewares.first is PassThroughMiddleware)
+        #expect(client.attemptMiddlewares.isEmpty)
 
         try await client.shutdown()
     }

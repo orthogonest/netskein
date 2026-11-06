@@ -18,7 +18,8 @@ public struct TestClientBuilder: Sendable {
     private var cookieJar: CookieJar?
     private var cache: HTTPCache?
     private var retryPolicy: RetryPolicy
-    private var middlewares: [any HTTPMiddleware]
+    private var attemptMiddlewares: [any HTTPMiddleware]
+    private var callMiddlewares: [any HTTPMiddleware]
     private var tracer: (any Tracer)?
     private var logger: Logger
     private var stubs: [HTTPStub]
@@ -28,7 +29,8 @@ public struct TestClientBuilder: Sendable {
         self.stubs = []
         defaultHeaders = HTTPHeaders()
         retryPolicy = .disabled
-        middlewares = []
+        attemptMiddlewares = []
+        callMiddlewares = []
         tracer = InstrumentationSystem.tracer
         logger = Logger(label: LoggerLabel.test)
     }
@@ -64,20 +66,29 @@ extension TestClientBuilder {
         return copy
     }
 
+    /// Adds a middleware that runs once per call, or for every attempt (the default), as
+    /// `scope` says.
     @discardableResult
-    public func using(_ middleware: some HTTPMiddleware) -> Self {
+    public func using(
+        _ middleware: some HTTPMiddleware,
+        per scope: MiddlewareScope = .attempt
+    ) -> Self {
         var copy = self
-        copy.middlewares.append(middleware)
+        switch scope {
+        case .call: copy.callMiddlewares.append(middleware)
+        case .attempt: copy.attemptMiddlewares.append(middleware)
+        }
         return copy
     }
 
     @discardableResult
     public func using(
+        per scope: MiddlewareScope = .attempt,
         _ intercept:
             @escaping @Sendable (RequestHead, MiddlewareContext, HTTPMiddleware.Next)
             async throws -> HTTPClientResponse
     ) -> Self {
-        using(ClosureMiddleware(intercept))
+        using(ClosureMiddleware(intercept), per: scope)
     }
 
     /// Records request spans in `tracer`, for example an `InMemoryTracer` that tests can inspect.
@@ -133,7 +144,8 @@ extension TestClientBuilder {
             cookieJar: cookieJar,
             cache: cache,
             retryPolicy: retryPolicy,
-            middlewares: middlewares,
+            attemptMiddlewares: attemptMiddlewares,
+            callMiddlewares: callMiddlewares,
             tracer: tracer,
             logger: logger
         )

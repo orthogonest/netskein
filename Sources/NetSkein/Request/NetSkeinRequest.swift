@@ -14,7 +14,8 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
     private var maxResponseBytes: Int?
     private var timeout: TimeAmount
     private var retryPolicy: RetryPolicy?
-    private var middlewares: [any HTTPMiddleware]
+    private var attemptMiddlewares: [any HTTPMiddleware]
+    private var callMiddlewares: [any HTTPMiddleware]
     private var cachePolicy: CachePolicy?
     private let percentEncoder: PercentEncoder
 
@@ -27,7 +28,8 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         maxResponseBytes: Int? = 10 * 1024 * 1024,
         timeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
-        middlewares: [any HTTPMiddleware] = [],
+        attemptMiddlewares: [any HTTPMiddleware] = [],
+        callMiddlewares: [any HTTPMiddleware] = [],
         cachePolicy: CachePolicy? = nil,
         percentEncoder: PercentEncoder = .default,
     ) {
@@ -39,7 +41,8 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         self.maxResponseBytes = maxResponseBytes
         self.timeout = timeout
         self.retryPolicy = retryPolicy
-        self.middlewares = middlewares
+        self.attemptMiddlewares = attemptMiddlewares
+        self.callMiddlewares = callMiddlewares
         self.cachePolicy = cachePolicy
         self.percentEncoder = percentEncoder
     }
@@ -148,17 +151,25 @@ extension NetSkeinRequest {
         return copy
     }
 
-    /// Adds a middleware for this request only; it runs inside the client's middleware.
+    /// Adds a middleware for this request only; it runs inside the client's middleware of the
+    /// same scope, once per call or for every attempt (the default). See ``MiddlewareScope``.
     @discardableResult
-    public func using(_ middleware: some HTTPMiddleware) -> Self {
+    public func using(
+        _ middleware: some HTTPMiddleware,
+        per scope: MiddlewareScope = .attempt
+    ) -> Self {
         var copy = self
-        copy.middlewares.append(middleware)
+        switch scope {
+        case .call: copy.callMiddlewares.append(middleware)
+        case .attempt: copy.attemptMiddlewares.append(middleware)
+        }
         return copy
     }
 
     /// Adds a closure as a middleware for this request only.
     @discardableResult
     public func using(
+        per scope: MiddlewareScope = .attempt,
         _ intercept:
             @escaping @Sendable (
                 RequestHead,
@@ -166,7 +177,7 @@ extension NetSkeinRequest {
                 HTTPMiddleware.Next
             ) async throws -> HTTPClientResponse
     ) -> Self {
-        using(ClosureMiddleware(intercept))
+        using(ClosureMiddleware(intercept), per: scope)
     }
 }
 
@@ -194,7 +205,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
-            middlewares: copy.middlewares,
+            attemptMiddlewares: copy.attemptMiddlewares,
+            callMiddlewares: copy.callMiddlewares,
             cachePolicy: copy.cachePolicy,
             percentEncoder: copy.percentEncoder,
         )
@@ -223,7 +235,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
                 maxResponseBytes: copy.maxResponseBytes,
                 timeout: copy.timeout,
                 retryPolicy: copy.retryPolicy,
-                middlewares: copy.middlewares,
+                attemptMiddlewares: copy.attemptMiddlewares,
+                callMiddlewares: copy.callMiddlewares,
                 cachePolicy: copy.cachePolicy,
                 percentEncoder: copy.percentEncoder,
             )
@@ -256,7 +269,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
-            middlewares: copy.middlewares,
+            attemptMiddlewares: copy.attemptMiddlewares,
+            callMiddlewares: copy.callMiddlewares,
             cachePolicy: copy.cachePolicy,
             percentEncoder: copy.percentEncoder,
         )
@@ -306,7 +320,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             maxResponseBytes: copy.maxResponseBytes,
             timeout: copy.timeout,
             retryPolicy: copy.retryPolicy,
-            middlewares: copy.middlewares,
+            attemptMiddlewares: copy.attemptMiddlewares,
+            callMiddlewares: copy.callMiddlewares,
             cachePolicy: copy.cachePolicy,
             percentEncoder: copy.percentEncoder,
         )
@@ -325,7 +340,8 @@ extension NetSkeinRequest where Body == BodyForbidden {
             maxResponseBytes: self.maxResponseBytes,
             timeout: self.timeout,
             retryPolicy: self.retryPolicy,
-            middlewares: self.middlewares,
+            attemptMiddlewares: self.attemptMiddlewares,
+            callMiddlewares: self.callMiddlewares,
             cachePolicy: self.cachePolicy,
             percentEncoder: self.percentEncoder,
         )
@@ -465,7 +481,9 @@ extension NetSkeinRequest {
             timeout: timeout,
             retryPolicy: retryPolicy ?? client.retryPolicy,
             maxResponseBytes: responseLimit,
-            middlewares: client.middlewares + middlewares + (cache.map { [$0] } ?? []),
+            callMiddlewares: client.callMiddlewares + callMiddlewares,
+            attemptMiddlewares: client.attemptMiddlewares + attemptMiddlewares
+                + (cache.map { [$0] } ?? []),
         )
     }
 }

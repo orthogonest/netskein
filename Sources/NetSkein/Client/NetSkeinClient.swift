@@ -8,7 +8,10 @@ public final class NetSkeinClient: Sendable {
     package let transport: any HTTPTransport
     let defaultHeaders: HTTPHeaders
     let retryPolicy: RetryPolicy
-    let middlewares: [any HTTPMiddleware]
+    /// Middleware that runs for every attempt of every call.
+    let attemptMiddlewares: [any HTTPMiddleware]
+    /// Middleware that runs once per call, around all of its attempts.
+    let callMiddlewares: [any HTTPMiddleware]
     let cache: HTTPCache?
     /// Whether the transport decompresses response bodies but keeps their `Content-Encoding`.
     let transportDecompresses: Bool
@@ -41,7 +44,8 @@ public final class NetSkeinClient: Sendable {
         cache: HTTPCache? = nil,
         transportDecompresses: Bool = false,
         retryPolicy: RetryPolicy = .disabled,
-        middlewares: [any HTTPMiddleware] = [],
+        attemptMiddlewares: [any HTTPMiddleware] = [],
+        callMiddlewares: [any HTTPMiddleware] = [],
         tracer: (any Tracer)? = InstrumentationSystem.tracer,
         logger: Logger,
         percentEncoder: PercentEncoder = .default,
@@ -49,7 +53,9 @@ public final class NetSkeinClient: Sendable {
         self.transport = transport
         self.defaultHeaders = defaultHeaders
         self.retryPolicy = retryPolicy
-        self.middlewares = (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + middlewares
+        self.attemptMiddlewares =
+            (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + attemptMiddlewares
+        self.callMiddlewares = callMiddlewares
         self.cache = cache
         self.transportDecompresses = transportDecompresses
         self.tracer = tracer

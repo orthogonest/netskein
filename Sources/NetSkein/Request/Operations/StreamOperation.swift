@@ -58,4 +58,9 @@ extension StreamOperation: RequestOperation {
 
         return (response.status, response.headers)
     }
+
+    /// The response head; its body has already been handed to the caller.
+    func response(for output: Output) -> HTTPClientResponse {
+        HTTPClientResponse(status: output.status, headers: output.headers)
+    }
 }

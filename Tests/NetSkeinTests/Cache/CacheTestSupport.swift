@@ -94,7 +94,7 @@ func makeClient(
     _ transport: ScriptedTransport,
     cache: HTTPCache,
     transportDecompresses: Bool = false,
-    middlewares: [any HTTPMiddleware] = []
+    attemptMiddlewares: [any HTTPMiddleware] = []
 ) -> NetSkeinClient {
     NetSkeinClient(
         transport: transport,
@@ -103,7 +103,7 @@ func makeClient(
         cache: cache,
         transportDecompresses: transportDecompresses,
         retryPolicy: .disabled,
-        middlewares: middlewares,
+        attemptMiddlewares: attemptMiddlewares,
         tracer: nil,
         logger: Logger(label: LoggerLabel.test)
     )

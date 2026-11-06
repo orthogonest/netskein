@@ -21,4 +21,9 @@ struct OpenStreamOperation: RequestOperation {
         }
         return response
     }
+
+    /// The response itself, with its body still to be read by the caller.
+    func response(for output: Output) -> HTTPClientResponse {
+        output
+    }
 }

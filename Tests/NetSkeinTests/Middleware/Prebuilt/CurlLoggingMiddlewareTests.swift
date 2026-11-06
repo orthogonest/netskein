@@ -195,7 +195,7 @@ struct CurlLoggingMiddlewareTests {
 
         let client = NetSkeinClient(
             transport: StaticTransport(),
-            middlewares: [
+            attemptMiddlewares: [
                 ClosureMiddleware { request, _, next in
                     var request = request
                     request.headers.replaceOrAdd(name: "Authorization", value: "Bearer secret")

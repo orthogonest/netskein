@@ -21,23 +21,25 @@ struct AttemptOutcome<Output> {
 
 /// Makes attempts until one succeeds or the retry policy stops, backing off between them.
 ///
-/// Knows nothing about requests, middleware or response bodies: each attempt is a closure that
-/// reports an ``AttemptOutcome``.
+/// Knows nothing about middleware, transports or response bodies: each attempt is a closure
+/// that reports an ``AttemptOutcome``. Of the request, only its method and URL are used, to tell
+/// the retry policy what is being retried.
 struct RetryStage: Sendable {
     let policy: RetryPolicy
-    let method: HTTPMethod
-    let url: String
 
+    /// Makes attempts at `head`, as left by the middleware that runs once per call.
     func run<Output>(
+        _ head: RequestHead,
         span: (any Span)?,
         _ attempt: (Int) async -> AttemptOutcome<Output>
     ) async throws(NetSkeinError) -> Output {
-        try await makeAttempt(0, span: span, attempt)
+        try await makeAttempt(0, at: head, span: span, attempt)
     }
 
     /// Makes attempt `number`, then either finishes the call or backs off and makes the next one.
     private func makeAttempt<Output>(
         _ number: Int,
+        at head: RequestHead,
         span: (any Span)?,
         _ attempt: (Int) async -> AttemptOutcome<Output>
     ) async throws(NetSkeinError) -> Output {
@@ -49,7 +51,7 @@ struct RetryStage: Sendable {
         let outcome = await attempt(number)
         guard
             outcome.isRetryable,
-            await shouldRetry(after: number, outcome),
+            await shouldRetry(head, after: number, outcome),
             let delay = retryDelay(before: number + 1, after: outcome)
         else {
             return try outcome.result.get()
@@ -65,11 +67,13 @@ struct RetryStage: Sendable {
 
         try await sleep(for: delay)
 
-        return try await makeAttempt(number + 1, span: span, attempt)
+        return try await makeAttempt(number + 1, at: head, span: span, attempt)
     }
 
-    /// Asks the retry policy whether attempt `number` should be followed by another one.
+    /// Asks the retry policy whether attempt `number` at `head` should be followed by another
+    /// one.
     private func shouldRetry<Output>(
+        _ head: RequestHead,
         after number: Int,
         _ outcome: AttemptOutcome<Output>
     ) async -> Bool {
@@ -84,8 +88,8 @@ struct RetryStage: Sendable {
         let retryContext = RetryContext(
             attempt: nextNumber,
             maxRetries: policy.maxRetries,
-            method: method,
-            url: url,
+            method: head.method,
+            url: head.url,
             responseStatus: outcome.status,
             responseHeaders: outcome.headers,
             error: error

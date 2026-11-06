@@ -4,8 +4,8 @@ import NIOHTTP1
 
 /// What one kind of call does with each attempt's response. The pipeline stages do everything
 /// else: building the request, middleware, transport, retries, backoff and tracing.
-protocol RequestOperation {
-    associatedtype Output
+protocol RequestOperation: Sendable {
+    associatedtype Output: Sendable
 
     /// Names the call in spans, for example `send`.
     var name: String { get }
@@ -30,6 +30,10 @@ protocol RequestOperation {
 
     /// Turns an attempt's response into the call's result. Throwing counts as a failed attempt.
     mutating func handle(_ response: HTTPClientResponse, logger: Logger) async throws -> Output
+
+    /// The call's result as a response, for middleware that runs once per call
+    /// (``MiddlewareScope/call``).
+    func response(for output: Output) -> HTTPClientResponse
 }
 
 /// How one attempt is described in logs, and any headers it adds to the request.

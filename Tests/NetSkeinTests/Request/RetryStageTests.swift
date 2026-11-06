@@ -10,6 +10,7 @@ import Testing
 /// involved.
 struct RetryStageTests {
     let logger = Logger(label: LoggerLabel.test)
+    let head = RequestHead(method: .GET, url: "https://api.example.com", headers: [:])
 
     func makeStage(
         maxRetries: Int = 3,
@@ -20,9 +21,7 @@ struct RetryStageTests {
                 maxRetries: maxRetries,
                 backoff: .immediate,
                 maxRetryAfter: maxRetryAfter
-            ),
-            method: .GET,
-            url: "https://api.example.com"
+            )
         )
     }
 
@@ -55,7 +54,7 @@ extension RetryStageTests {
         var numbers: [Int] = []
 
         let result = try await makeStage()
-            .run(span: nil) { number in
+            .run(head, span: nil) { number in
                 numbers.append(number)
                 return number < 2 ? failure() : success("done")
             }
@@ -70,7 +69,7 @@ extension RetryStageTests {
 
         await #expect(throws: NetSkeinError.self) {
             _ = try await makeStage()
-                .run(span: nil) { _ in
+                .run(head, span: nil) { _ in
                     count += 1
                     return failure(retryable: false)
                 }
@@ -84,7 +83,7 @@ extension RetryStageTests {
 
         await #expect(throws: NetSkeinError.self) {
             _ = try await makeStage(maxRetries: 2)
-                .run(span: nil) { _ in
+                .run(head, span: nil) { _ in
                     count += 1
                     return failure()
                 }
@@ -95,7 +94,7 @@ extension RetryStageTests {
     @Test("RetryStageTests: a successful attempt with a retryable status is retried")
     func testRetryableStatus() async throws {
         let result = try await makeStage()
-            .run(span: nil) { number in
+            .run(head, span: nil) { number in
                 number == 0 ? success("busy", status: .serviceUnavailable) : success("done")
             }
 
@@ -113,7 +112,7 @@ extension RetryStageTests {
         var count = 0
 
         let result = try await makeStage(maxRetryAfter: .seconds(10))
-            .run(span: nil) { _ in
+            .run(head, span: nil) { _ in
                 count += 1
                 return success(
                     "busy",
@@ -129,7 +128,7 @@ extension RetryStageTests {
     @Test("RetryStageTests: a Retry-After within maxRetryAfter is waited for, then retried")
     func testRetryAfterWithinLimit() async throws {
         let result = try await makeStage(maxRetryAfter: .zero)
-            .run(span: nil) { number in
+            .run(head, span: nil) { number in
                 number == 0
                     ? success("busy", status: .serviceUnavailable, headers: ["Retry-After": "0"])
                     : success("done")

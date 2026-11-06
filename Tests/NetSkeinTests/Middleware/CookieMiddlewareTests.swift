@@ -71,7 +71,7 @@ extension CookieMiddlewareTests {
     func testNotAddedWithoutJar() {
         let client = NetSkeinClient.testing().build()
 
-        #expect(!client.middlewares.contains { $0 is CookieMiddleware })
+        #expect(!client.attemptMiddlewares.contains { $0 is CookieMiddleware })
     }
 }
 

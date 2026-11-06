@@ -81,7 +81,7 @@ extension HTTPCacheTests {
         let client = makeClient(
             transport,
             cache: makeCache(clock: clock),
-            middlewares: [addTenant]
+            attemptMiddlewares: [addTenant]
         )
 
         _ = try await client.get(itemsURL).send()
