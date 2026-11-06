@@ -11,8 +11,9 @@ enum RetryAfterParser {
         }
 
         if let date = HTTPDate.parse(retryAfter) {
-            let diff = date.timeIntervalSinceNow
-            return diff > 0 ? .nanoseconds(Int64(diff * 1_000_000_000)) : .nanoseconds(0)
+            let nanoseconds = date.timeIntervalSinceNow * 1_000_000_000
+            guard nanoseconds > 0 else { return .nanoseconds(0) }
+            return .nanoseconds(nanoseconds < Double(Int64.max) ? Int64(nanoseconds) : .max)
         }
 
         return nil

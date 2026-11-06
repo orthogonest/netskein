@@ -45,7 +45,7 @@ struct TestClientBuilderTests {
             .cookieJar(expectedJar)
             .build()
 
-        #expect((client.middlewares.first as? CookieMiddleware)?.jar === expectedJar)
+        #expect((client.attemptMiddlewares.first as? CookieMiddleware)?.jar === expectedJar)
     }
 
     @Test(
@@ -156,7 +156,18 @@ extension TestClientBuilderTests {
             .using { request, _, next in try await next(request) }
             .build()
 
-        #expect(client.middlewares.count == 2)
+        #expect(client.attemptMiddlewares.count == 2)
+    }
+
+    @Test("TestClientBuilderTests: Verify using per call registers middleware outside the retries")
+    func usingPerCall() {
+        let client = NetSkeinClient.testing()
+            .using(ClosureMiddleware { request, _, next in try await next(request) }, per: .call)
+            .using(per: .call) { request, _, next in try await next(request) }
+            .build()
+
+        #expect(client.callMiddlewares.count == 2)
+        #expect(client.attemptMiddlewares.isEmpty)
     }
 }
 

@@ -39,6 +39,13 @@ struct RetryAfterParserTests {
         #expect(RetryAfterParser.parseDelay(from: headers) == .nanoseconds(0))
     }
 
+    @Test("RetryAfterParserTests: Verifies a date centuries away is capped instead of crashing")
+    func testRetryAfterFarFutureDate() {
+        let headers: HTTPHeaders = ["Retry-After": "Fri, 31 Dec 9999 23:59:59 GMT"]
+
+        #expect(RetryAfterParser.parseDelay(from: headers) == .nanoseconds(.max))
+    }
+
     @Test("RetryAfterParserTests: Verifies obsolete HTTP-date formats are accepted too")
     func testRetryAfterObsoleteHTTPDate() {
         let formatter = DateFormatter()

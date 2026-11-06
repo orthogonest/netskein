@@ -26,7 +26,8 @@ public struct NetSkeinClientBuilder: Sendable {
     private var cookieJar: CookieJar?
     private var cache: HTTPCache?
     private var retryPolicy: RetryPolicy
-    private var middlewares: [any HTTPMiddleware]
+    private var attemptMiddlewares: [any HTTPMiddleware]
+    private var callMiddlewares: [any HTTPMiddleware]
     private var tlsConfiguration: TLSConfiguration?
     private var acceptInvalidCertificates: Bool
     private var tracer: TracerSelection
@@ -43,7 +44,8 @@ public struct NetSkeinClientBuilder: Sendable {
         automaticDecompression = true
         decompressionLimit = .size(10 * 1024 * 1024)
         retryPolicy = .disabled
-        middlewares = []
+        attemptMiddlewares = []
+        callMiddlewares = []
         acceptInvalidCertificates = false
         tracer = .global
         logger = Logger(label: LoggerLabel.identifier)
@@ -147,17 +149,26 @@ extension NetSkeinClientBuilder {
         return copy
     }
 
-    /// Adds a middleware that runs for every request sent by the built client.
+    /// Adds a middleware that runs for every call sent by the built client: once per call, or
+    /// for every attempt (the default), as `scope` says. See ``MiddlewareScope``.
     @discardableResult
-    public func using(_ middleware: some HTTPMiddleware) -> Self {
+    public func using(
+        _ middleware: some HTTPMiddleware,
+        per scope: MiddlewareScope = .attempt
+    ) -> Self {
         var copy = self
-        copy.middlewares.append(middleware)
+        switch scope {
+        case .call: copy.callMiddlewares.append(middleware)
+        case .attempt: copy.attemptMiddlewares.append(middleware)
+        }
         return copy
     }
 
-    /// Adds a closure as a middleware that runs for every request sent by the built client.
+    /// Adds a closure as a middleware that runs for every call sent by the built client: once
+    /// per call, or for every attempt (the default), as `scope` says. See ``MiddlewareScope``.
     @discardableResult
     public func using(
+        per scope: MiddlewareScope = .attempt,
         _ intercept:
             @escaping @Sendable (
                 RequestHead,
@@ -165,7 +176,7 @@ extension NetSkeinClientBuilder {
                 HTTPMiddleware.Next
             ) async throws -> HTTPClientResponse
     ) -> Self {
-        using(ClosureMiddleware(intercept))
+        using(ClosureMiddleware(intercept), per: scope)
     }
 
     @discardableResult
@@ -252,7 +263,8 @@ extension NetSkeinClientBuilder {
             cache: cache,
             transportDecompresses: automaticDecompression,
             retryPolicy: retryPolicy,
-            middlewares: middlewares,
+            attemptMiddlewares: attemptMiddlewares,
+            callMiddlewares: callMiddlewares,
             tracer: resolvedTracer,
             logger: logger
         )

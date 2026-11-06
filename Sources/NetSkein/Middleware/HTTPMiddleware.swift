@@ -2,9 +2,11 @@ import AsyncHTTPClient
 
 /// A step in the request pipeline that can inspect or change each attempt's request and response.
 ///
-/// Middleware runs once per attempt, inside the retry loop. Middleware registered on the client
-/// wraps middleware registered on a single request; within each, the first one added runs first
-/// on the way out and last on the way back.
+/// By default, middleware runs once per attempt, inside the retry loop. Register it with
+/// `per: .call` to run it once for the whole call instead, around every attempt; see
+/// ``MiddlewareScope``. Middleware registered on the client wraps middleware registered on a
+/// single request; within each, the first one added runs first on the way out and last on the
+/// way back.
 ///
 /// Calling `next` sends the request to the rest of the chain. It may be called more than once,
 /// for example to re-send after refreshing credentials: NetSkein attaches a fresh request body

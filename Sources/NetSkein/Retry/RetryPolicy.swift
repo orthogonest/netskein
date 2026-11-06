@@ -1,3 +1,4 @@
+import NIOCore
 import NIOHTTP1
 
 public struct RetryPolicy: Sendable {
@@ -6,17 +7,22 @@ public struct RetryPolicy: Sendable {
     public let maxRetries: Int
     public let backoff: BackoffStrategy
     public let respectRetryAfterHeader: Bool
+    /// The longest `Retry-After` worth waiting for. When a server asks for longer, the call
+    /// gives up instead of retrying, and returns or throws what the last attempt produced.
+    public let maxRetryAfter: TimeAmount
     public let evaluator: Evaluator
 
     public init(
         maxRetries: Int = 3,
         backoff: BackoffStrategy = .exponential(),
         respectRetryAfterHeader: Bool = true,
+        maxRetryAfter: TimeAmount = .seconds(60),
         evaluator: @escaping Evaluator
     ) {
         self.maxRetries = maxRetries
         self.backoff = backoff
         self.respectRetryAfterHeader = respectRetryAfterHeader
+        self.maxRetryAfter = maxRetryAfter
         self.evaluator = evaluator
     }
 }
@@ -28,8 +34,13 @@ extension RetryPolicy {
         maxRetries: Int = 3,
         backoff: BackoffStrategy = .exponential(),
         retryNonIdempotent: Bool = false,
+        maxRetryAfter: TimeAmount = .seconds(60),
     ) -> Self {
-        Self(maxRetries: maxRetries, backoff: backoff) { context in
+        RetryPolicy(
+            maxRetries: maxRetries,
+            backoff: backoff,
+            maxRetryAfter: maxRetryAfter
+        ) { context in
             if context.attempt > context.maxRetries { return false }
 
             if !retryNonIdempotent && !context.method.isIdempotent {

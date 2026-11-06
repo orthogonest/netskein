@@ -30,7 +30,7 @@ extension NetSkeinClientTests {
         )
 
         #expect(client.defaultHeaders.first(name: "X-Global-Header") == "Active")
-        #expect((client.middlewares.first as? CookieMiddleware)?.jar === jar)
+        #expect((client.attemptMiddlewares.first as? CookieMiddleware)?.jar === jar)
 
         try await client.shutdown()
     }
@@ -43,7 +43,7 @@ extension NetSkeinClientTests {
         let client = NetSkeinClient(defaultHeaders: customHeaders)
 
         #expect(client.defaultHeaders.first(name: "Accept-Language") == "en-US")
-        #expect(client.middlewares.isEmpty)
+        #expect(client.attemptMiddlewares.isEmpty)
 
         try await client.shutdown()
     }

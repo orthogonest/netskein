@@ -1077,7 +1077,7 @@ extension RequestExecutorTests {
             url: "https://api.example.com/middleware-context",
             body: .bytes(ByteBuffer(string: "payload")),
             retryPolicy: .standard(maxRetries: 1, backoff: .immediate),
-            middlewares: [recorder]
+            attemptMiddlewares: [recorder]
         )
 
         let response = try await executor.send()
@@ -1113,7 +1113,7 @@ extension RequestExecutorTests {
             url: "https://api.example.com/upload",
             body: .file(path: tempURL.path, chunkSize: 32, onProgress: nil),
             retryPolicy: .disabled,
-            middlewares: [resend]
+            attemptMiddlewares: [resend]
         )
 
         _ = try await executor.send()
@@ -1143,7 +1143,7 @@ extension RequestExecutorTests {
             client: client,
             url: "https://api.example.com/middleware-failure",
             retryPolicy: .standard(maxRetries: 2, backoff: .immediate),
-            middlewares: [failing]
+            attemptMiddlewares: [failing]
         )
 
         do {
@@ -1182,7 +1182,7 @@ extension RequestExecutorTests {
             client: client,
             url: "https://api.example.com/middleware-transfer",
             retryPolicy: .disabled,
-            middlewares: [addHeader]
+            attemptMiddlewares: [addHeader]
         )
 
         _ = try await executor.stream { _, _, _ in }
@@ -1332,10 +1332,11 @@ extension RequestExecutorTests {
         url: String,
         headers: HTTPHeaders = [:],
         body: BodySource = .none,
-        timeout: TimeAmount? = nil,
+        timeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024,
-        middlewares: [any HTTPMiddleware] = []
+        callMiddlewares: [any HTTPMiddleware] = [],
+        attemptMiddlewares: [any HTTPMiddleware] = []
     ) -> RequestExecutor {
         RequestExecutor(
             client: client,
@@ -1344,9 +1345,10 @@ extension RequestExecutorTests {
             headers: headers,
             body: body,
             timeout: timeout,
-            retryPolicy: retryPolicy,
+            retryPolicy: retryPolicy ?? client.retryPolicy,
             maxResponseBytes: maxResponseBytes,
-            middlewares: middlewares
+            callMiddlewares: callMiddlewares,
+            attemptMiddlewares: attemptMiddlewares
         )
     }
 
