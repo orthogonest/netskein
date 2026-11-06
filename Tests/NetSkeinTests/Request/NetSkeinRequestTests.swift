@@ -163,7 +163,7 @@ extension NetSkeinRequestTests {
     }
 
     @Test(
-        "NetSkeinRequestTests: Verifies maxResponseBytes, timeout, and retry modifiers update builder state"
+        "NetSkeinRequestTests: Verifies maxResponseBytes, timeouts, and retry modifiers update builder state"
     )
     func testConfigurationModifiers() async throws {
         let stub = HTTPStub(
@@ -175,7 +175,8 @@ extension NetSkeinRequestTests {
 
         let response = try await client.get("https://api.example.com")
             .maxResponseBytes(5 * 1024 * 1024)
-            .timeout(.seconds(15))
+            .attemptTimeout(.seconds(15))
+            .callTimeout(.seconds(60))
             .retry(.standard(maxRetries: 5))
             .send()
 

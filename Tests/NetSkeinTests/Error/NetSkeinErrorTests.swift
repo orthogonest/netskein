@@ -165,3 +165,13 @@ extension NetSkeinErrorTests {
         #expect(error.failureReason?.contains("The server failed repeatedly") == true)
     }
 }
+
+extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies timedOut has its own default descriptions")
+    func testTimedOutLocalization() {
+        let error = NetSkeinError.simple(.timedOut)
+
+        #expect(error.errorDescription == "The call did not finish within its time limit.")
+        #expect(error.failureReason?.contains("longer than the call's time limit") == true)
+    }
+}

@@ -6,10 +6,11 @@ import NIOHTTP1
 /// Runs one call through the request pipeline:
 ///
 /// ```
-/// TracingStage      one span for the whole call                       (once per call)
-///   CallStage       middleware registered per: .call                  (once per call)
-///     RetryStage    retry policy, backoff, Retry-After, cancellation  (once per call run)
-///       AttemptStage  the operation, middleware and transport         (once per attempt)
+/// TracingStage          one span for the whole call                       (once per call)
+///   TimeoutStage        the call timeout                                  (once per call)
+///     CallStage         middleware registered per: .call                  (once per call)
+///       RetryStage      retry policy, backoff, Retry-After, cancellation  (once per call run)
+///         AttemptStage  the operation, middleware and transport           (once per attempt)
 /// ```
 ///
 /// The operation (``SendOperation``, ``StreamOperation``, ``OpenStreamOperation`` or
@@ -21,7 +22,8 @@ struct RequestExecutor: Sendable {
     let url: String
     let headers: HTTPHeaders
     let body: BodySource
-    let timeout: TimeAmount
+    let callTimeout: TimeAmount?
+    let attemptTimeout: TimeAmount
     let retryPolicy: RetryPolicy
     let maxResponseBytes: Int
     /// Middleware that runs once per call, around every attempt.
@@ -39,10 +41,12 @@ extension RequestExecutor {
         _ operation: Operation
     ) async throws(NetSkeinError) -> Operation.Output {
         let requestID = UUID().uuidString
-        var head = RequestHead(method: method, url: url, headers: headers)
-        head.headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
+        var headers = headers
+        headers.replaceOrAdd(name: "X-Request-ID", value: requestID)
+        let head = RequestHead(method: method, url: url, headers: headers)
 
         let tracing = TracingStage(tracer: client.tracer, method: method)
+        let timeout = TimeoutStage(limit: callTimeout)
         let call = CallStage(
             middlewares: callMiddlewares,
             context: MiddlewareContext(
@@ -52,12 +56,15 @@ extension RequestExecutor {
                 body: body.bodyDescription
             )
         )
-        let retry = RetryStage(policy: retryPolicy)
+        let retry = RetryStage(
+            policy: retryPolicy,
+            deadline: callTimeout.map { NIODeadline.now() + $0 }
+        )
         let attempts = AttemptStage(
             transport: client.transport,
             logger: client.logger,
             body: body,
-            timeout: timeout,
+            timeout: attemptTimeout,
             middlewares: attemptMiddlewares,
             requestID: requestID
         )
@@ -66,12 +73,14 @@ extension RequestExecutor {
             operation.name,
             requestID: requestID
         ) { span throws(NetSkeinError) in
-            try await call.run(
-                head,
-                operation: operation
-            ) { head, operation throws(NetSkeinError) in
-                try await retry.run(head, span: span) { number in
-                    await attempts.run(number, at: head, of: &operation, span: span)
+            try await timeout.run { () throws(NetSkeinError) in
+                try await call.run(
+                    head,
+                    operation: operation
+                ) { head, operation throws(NetSkeinError) in
+                    try await retry.run(head, span: span) { number in
+                        await attempts.run(number, at: head, of: &operation, span: span)
+                    }
                 }
             }
         }

@@ -23,7 +23,7 @@ struct GetJSON {
 
         do {
             let comic = try await client.get("https://xkcd.com/info.0.json")
-                .timeout(.seconds(30))
+                .callTimeout(.seconds(30))
                 .send()
                 .json(Comic.self)
             dump(comic)

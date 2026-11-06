@@ -14,6 +14,9 @@ public struct NetSkeinError: Error, Sendable {
         /// A ``CircuitBreaker`` rejected the request without sending it, because the server kept
         /// failing. Not retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
         case circuitOpen
+        /// The call did not finish within its ``NetSkeinRequest/callTimeout(_:)`` and was
+        /// cancelled.
+        case timedOut
     }
 
     private enum Representation: Sendable {
@@ -108,6 +111,8 @@ extension NetSkeinError: LocalizedError {
                 return "A middleware failed while handling the request."
             case .circuitOpen:
                 return "The request was not sent because the server's circuit breaker is open."
+            case .timedOut:
+                return "The call did not finish within its time limit."
             }
         case let .custom(_, data):
             return data.message
@@ -141,6 +146,9 @@ extension NetSkeinError: LocalizedError {
             case .circuitOpen:
                 return
                     "The server failed repeatedly, so requests to it are rejected for a while to let it recover."
+            case .timedOut:
+                return
+                    "The attempts, the waits between them, and reading the response together took longer than the call's time limit."
             }
         case let .custom(_, data):
             return data.underlyingError?.localizedDescription

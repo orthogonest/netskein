@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Logging
+import NIOCore
 import NIOHTTP1
 import NetSkein
 import Tracing
@@ -19,6 +20,7 @@ public struct TestClientBuilder: Sendable {
     private var cache: HTTPCache?
     private var circuitBreaker: CircuitBreaker?
     private var retryPolicy: RetryPolicy
+    private var callTimeout: TimeAmount?
     private var attemptMiddlewares: [any HTTPMiddleware]
     private var callMiddlewares: [any HTTPMiddleware]
     private var tracer: (any Tracer)?
@@ -72,6 +74,15 @@ extension TestClientBuilder {
     public func retryPolicy(_ policy: RetryPolicy) -> Self {
         var copy = self
         copy.retryPolicy = policy
+        return copy
+    }
+
+    /// Limits every call made by the built client, attempts and waits included; requests can
+    /// change it with `NetSkeinRequest.callTimeout(_:)`. Calls have no overall limit unless this is set.
+    @discardableResult
+    public func callTimeout(_ duration: TimeAmount) -> Self {
+        var copy = self
+        copy.callTimeout = duration
         return copy
     }
 
@@ -154,6 +165,7 @@ extension TestClientBuilder {
             cache: cache,
             circuitBreaker: circuitBreaker,
             retryPolicy: retryPolicy,
+            callTimeout: callTimeout,
             attemptMiddlewares: attemptMiddlewares,
             callMiddlewares: callMiddlewares,
             tracer: tracer,

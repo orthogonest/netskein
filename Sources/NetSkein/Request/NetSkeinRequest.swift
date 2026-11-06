@@ -12,7 +12,9 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
     private var body: BodySource
     /// `nil` means no limit.
     private var maxResponseBytes: Int?
-    private var timeout: TimeAmount
+    /// `nil` means no limit on the call as a whole.
+    private var callTimeout: TimeAmount?
+    private var attemptTimeout: TimeAmount
     private var retryPolicy: RetryPolicy?
     private var attemptMiddlewares: [any HTTPMiddleware]
     private var callMiddlewares: [any HTTPMiddleware]
@@ -26,7 +28,8 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         headers: HTTPHeaders? = nil,
         body: BodySource = .none,
         maxResponseBytes: Int? = 10 * 1024 * 1024,
-        timeout: TimeAmount = .seconds(30),
+        callTimeout: TimeAmount?? = nil,
+        attemptTimeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
         attemptMiddlewares: [any HTTPMiddleware] = [],
         callMiddlewares: [any HTTPMiddleware] = [],
@@ -39,7 +42,8 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         self.headers = headers ?? client.defaultHeaders
         self.body = body
         self.maxResponseBytes = maxResponseBytes
-        self.timeout = timeout
+        self.callTimeout = callTimeout ?? client.callTimeout
+        self.attemptTimeout = attemptTimeout
         self.retryPolicy = retryPolicy
         self.attemptMiddlewares = attemptMiddlewares
         self.callMiddlewares = callMiddlewares
@@ -55,7 +59,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         url: String,
         headers: HTTPHeaders? = nil,
         maxResponseBytes: Int? = 10 * 1024 * 1024,
-        timeout: TimeAmount = .seconds(30),
+        attemptTimeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
         percentEncoder: PercentEncoder = .default,
     ) {
@@ -66,7 +70,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             headers: headers,
             body: .none,
             maxResponseBytes: maxResponseBytes,
-            timeout: timeout,
+            attemptTimeout: attemptTimeout,
             retryPolicy: retryPolicy,
             percentEncoder: percentEncoder
         )
@@ -124,11 +128,46 @@ extension NetSkeinRequest {
         return copy
     }
 
+    /// Limits the whole call: every attempt, the waits between them, and reading the body.
+    ///
+    /// When the limit passes, the call is cancelled and fails with
+    /// ``NetSkeinError/Kind/timedOut``. Before waiting for a retry that would end after the limit,
+    /// the call stops instead and returns or throws what the last attempt produced. For
+    /// ``stream()`` and ``lines(maxLineLength:)``, which return once the headers arrive, the limit
+    /// ends there; iterating the body afterwards is not limited by it.
+    ///
+    /// `nil`, the default unless the client sets one, puts no limit on the call as a whole. Each
+    /// attempt is still limited by ``attemptTimeout(_:)``, and each wait for body data by the
+    /// client's read timeout, but retries and a slowly arriving body can make the total much
+    /// longer. Set it when the caller has a time budget; pass `nil` to remove the client's limit
+    /// for this request.
     @discardableResult
-    public func timeout(_ duration: TimeAmount) -> Self {
+    public func callTimeout(_ duration: TimeAmount?) -> Self {
         var copy = self
-        copy.timeout = duration
+        copy.callTimeout = duration
         return copy
+    }
+
+    /// Limits each attempt, from sending the request until the response headers arrive; 30
+    /// seconds by default.
+    ///
+    /// It starts over for every retry and does not cover reading the body, which the client's
+    /// read timeout limits instead. Raise it for servers that take long to start answering, such
+    /// as long polling. See ``callTimeout(_:)`` to limit the whole call.
+    @discardableResult
+    public func attemptTimeout(_ duration: TimeAmount) -> Self {
+        var copy = self
+        copy.attemptTimeout = duration
+        return copy
+    }
+
+    @available(
+        *,
+        unavailable,
+        message: "Use callTimeout(_:) for the whole call, or attemptTimeout(_:) for each attempt"
+    )
+    public func timeout(_ duration: TimeAmount) -> Self {
+        fatalError("Unavailable at compile time")
     }
 
     @discardableResult
@@ -203,7 +242,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             headers: copy.headers,
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
-            timeout: copy.timeout,
+            callTimeout: copy.callTimeout,
+            attemptTimeout: copy.attemptTimeout,
             retryPolicy: copy.retryPolicy,
             attemptMiddlewares: copy.attemptMiddlewares,
             callMiddlewares: copy.callMiddlewares,
@@ -233,7 +273,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
                 headers: copy.headers,
                 body: copy.body,
                 maxResponseBytes: copy.maxResponseBytes,
-                timeout: copy.timeout,
+                callTimeout: copy.callTimeout,
+                attemptTimeout: copy.attemptTimeout,
                 retryPolicy: copy.retryPolicy,
                 attemptMiddlewares: copy.attemptMiddlewares,
                 callMiddlewares: copy.callMiddlewares,
@@ -267,7 +308,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             headers: copy.headers,
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
-            timeout: copy.timeout,
+            callTimeout: copy.callTimeout,
+            attemptTimeout: copy.attemptTimeout,
             retryPolicy: copy.retryPolicy,
             attemptMiddlewares: copy.attemptMiddlewares,
             callMiddlewares: copy.callMiddlewares,
@@ -318,7 +360,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             headers: copy.headers,
             body: copy.body,
             maxResponseBytes: copy.maxResponseBytes,
-            timeout: copy.timeout,
+            callTimeout: copy.callTimeout,
+            attemptTimeout: copy.attemptTimeout,
             retryPolicy: copy.retryPolicy,
             attemptMiddlewares: copy.attemptMiddlewares,
             callMiddlewares: copy.callMiddlewares,
@@ -338,7 +381,8 @@ extension NetSkeinRequest where Body == BodyForbidden {
             headers: self.headers,
             body: self.body,
             maxResponseBytes: self.maxResponseBytes,
-            timeout: self.timeout,
+            callTimeout: self.callTimeout,
+            attemptTimeout: self.attemptTimeout,
             retryPolicy: self.retryPolicy,
             attemptMiddlewares: self.attemptMiddlewares,
             callMiddlewares: self.callMiddlewares,
@@ -487,7 +531,8 @@ extension NetSkeinRequest {
             url: url,
             headers: headers,
             body: body,
-            timeout: timeout,
+            callTimeout: callTimeout,
+            attemptTimeout: attemptTimeout,
             retryPolicy: retryPolicy ?? client.retryPolicy,
             maxResponseBytes: responseLimit,
             callMiddlewares: client.callMiddlewares + callMiddlewares,
