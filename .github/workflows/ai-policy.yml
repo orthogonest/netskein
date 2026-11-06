@@ -1,0 +1,29 @@
+---
+name: AI Policy
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  no-ai-coauthors:
+    name: No AI Co-Authors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Full history, so the PR's base and head commits are both available.
+          fetch-depth: 0
+
+      - name: Check commits and PR description for AI co-author trailers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          chmod +x ./Scripts/check-ai-coauthors.sh
+          ./Scripts/check-ai-coauthors.sh "$BASE_SHA..$HEAD_SHA"

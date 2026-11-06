@@ -18,7 +18,8 @@ Describe the new feature and its purpose.
 - [ ] Tests added or updated
 - [ ] Documentation updated
 - [ ] No breaking changes introduced
+- [ ] I have read and can explain every change in this PR, and no commit credits an AI tool as co-author ([AI Policy](https://github.com/orthogonest/netskein/blob/main/AI_POLICY.md))
 
-## Refereces
+## References
 
 - List link to references
