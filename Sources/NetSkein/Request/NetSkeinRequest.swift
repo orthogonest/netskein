@@ -12,7 +12,7 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
     private var body: BodySource
     /// `nil` means no limit.
     private var maxResponseBytes: Int?
-    private var timeout: TimeAmount?
+    private var timeout: TimeAmount
     private var retryPolicy: RetryPolicy?
     private var middlewares: [any HTTPMiddleware]
     private var cachePolicy: CachePolicy?
@@ -25,7 +25,7 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
         headers: HTTPHeaders? = nil,
         body: BodySource = .none,
         maxResponseBytes: Int? = 10 * 1024 * 1024,
-        timeout: TimeAmount? = nil,
+        timeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
         middlewares: [any HTTPMiddleware] = [],
         cachePolicy: CachePolicy? = nil,
@@ -52,7 +52,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         url: String,
         headers: HTTPHeaders? = nil,
         maxResponseBytes: Int? = 10 * 1024 * 1024,
-        timeout: TimeAmount? = nil,
+        timeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
         percentEncoder: PercentEncoder = .default,
     ) {
@@ -463,7 +463,7 @@ extension NetSkeinRequest {
             headers: headers,
             body: body,
             timeout: timeout,
-            retryPolicy: retryPolicy,
+            retryPolicy: retryPolicy ?? client.retryPolicy,
             maxResponseBytes: responseLimit,
             middlewares: client.middlewares + middlewares + (cache.map { [$0] } ?? []),
         )

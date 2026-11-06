@@ -1332,7 +1332,7 @@ extension RequestExecutorTests {
         url: String,
         headers: HTTPHeaders = [:],
         body: BodySource = .none,
-        timeout: TimeAmount? = nil,
+        timeout: TimeAmount = .seconds(30),
         retryPolicy: RetryPolicy? = nil,
         maxResponseBytes: Int = 10 * 1024 * 1024,
         middlewares: [any HTTPMiddleware] = []
@@ -1344,7 +1344,7 @@ extension RequestExecutorTests {
             headers: headers,
             body: body,
             timeout: timeout,
-            retryPolicy: retryPolicy,
+            retryPolicy: retryPolicy ?? client.retryPolicy,
             maxResponseBytes: maxResponseBytes,
             middlewares: middlewares
         )
