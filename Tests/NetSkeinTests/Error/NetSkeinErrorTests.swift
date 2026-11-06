@@ -155,3 +155,13 @@ extension NetSkeinErrorTests {
 struct MockUnderlyingError: Error, LocalizedError, Sendable {
     var errorDescription: String? { "Root cause of failure." }
 }
+
+extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies circuitOpen has its own default descriptions")
+    func testCircuitOpenLocalization() {
+        let error = NetSkeinError.simple(.circuitOpen)
+
+        #expect(error.errorDescription?.contains("circuit breaker is open") == true)
+        #expect(error.failureReason?.contains("The server failed repeatedly") == true)
+    }
+}

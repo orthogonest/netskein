@@ -11,6 +11,9 @@ public struct NetSkeinError: Error, Sendable {
         case emptyResponseBody
         case ioFailure
         case middlewareFailure
+        /// A ``CircuitBreaker`` rejected the request without sending it, because the server kept
+        /// failing. Not retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
+        case circuitOpen
     }
 
     private enum Representation: Sendable {
@@ -103,6 +106,8 @@ extension NetSkeinError: LocalizedError {
                 return "A local filesystem or storage input/output error occurred."
             case .middlewareFailure:
                 return "A middleware failed while handling the request."
+            case .circuitOpen:
+                return "The request was not sent because the server's circuit breaker is open."
             }
         case let .custom(_, data):
             return data.message
@@ -133,6 +138,9 @@ extension NetSkeinError: LocalizedError {
             case .middlewareFailure:
                 return
                     "A registered middleware threw an error of its own, such as failing to obtain credentials, before a response could be produced."
+            case .circuitOpen:
+                return
+                    "The server failed repeatedly, so requests to it are rejected for a while to let it recover."
             }
         case let .custom(_, data):
             return data.underlyingError?.localizedDescription

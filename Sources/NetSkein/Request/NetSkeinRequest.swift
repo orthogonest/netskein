@@ -472,6 +472,15 @@ extension NetSkeinRequest {
             )
         }
 
+        var attemptStack = client.attemptMiddlewares + attemptMiddlewares
+        if let cache { attemptStack.append(cache) }
+
+        // Innermost: the cache can answer while a circuit is open, and only requests that reach
+        // the network count toward opening one
+        if let breaker = client.circuitBreaker {
+            attemptStack.append(CircuitBreakerMiddleware(breaker: breaker))
+        }
+
         return RequestExecutor(
             client: client,
             method: method,
@@ -482,8 +491,7 @@ extension NetSkeinRequest {
             retryPolicy: retryPolicy ?? client.retryPolicy,
             maxResponseBytes: responseLimit,
             callMiddlewares: client.callMiddlewares + callMiddlewares,
-            attemptMiddlewares: client.attemptMiddlewares + attemptMiddlewares
-                + (cache.map { [$0] } ?? []),
+            attemptMiddlewares: attemptStack,
         )
     }
 }

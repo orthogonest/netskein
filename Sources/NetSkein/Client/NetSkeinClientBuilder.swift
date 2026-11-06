@@ -25,6 +25,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var decompressionLimit: NIOHTTPDecompression.DecompressionLimit
     private var cookieJar: CookieJar?
     private var cache: HTTPCache?
+    private var circuitBreaker: CircuitBreaker?
     private var retryPolicy: RetryPolicy
     private var attemptMiddlewares: [any HTTPMiddleware]
     private var callMiddlewares: [any HTTPMiddleware]
@@ -139,6 +140,14 @@ extension NetSkeinClientBuilder {
     public func cache(_ cache: HTTPCache) -> Self {
         var copy = self
         copy.cache = cache
+        return copy
+    }
+
+    /// Rejects requests to servers that keep failing, as described by ``CircuitBreaker``.
+    @discardableResult
+    public func circuitBreaker(_ breaker: CircuitBreaker) -> Self {
+        var copy = self
+        copy.circuitBreaker = breaker
         return copy
     }
 
@@ -261,6 +270,7 @@ extension NetSkeinClientBuilder {
             defaultHeaders: defaultHeaders,
             cookieJar: cookieJar,
             cache: cache,
+            circuitBreaker: circuitBreaker,
             transportDecompresses: automaticDecompression,
             retryPolicy: retryPolicy,
             attemptMiddlewares: attemptMiddlewares,
