@@ -1,79 +1,37 @@
 ---
-name: Swift CI
+name: CI
 
-# Runs on every PR so the required checks always report a status.
-# When no Swift-related file changed, the jobs below are skipped,
-# which GitHub counts as passing.
+# Checks main after each merge and gives the README's CI badge a status.
+# The badge shows this workflow's name, so keep it short.
+#
+# Pull requests already run the full pipeline in pull-request.yml, so
+# this only runs the macOS build, tests and coverage, and only when
+# Swift-related files changed. Keep the job in sync with the macOS job
+# in pull-request.yml.
+#
+# Run it by hand from the Actions tab to retry a flaky failure, or to
+# give the badge its first status.
 
 on:
-  pull_request:
+  push:
     branches:
       - main
+    paths:
+      - "**/*.swift"
+      - "Makefile"
+      - "Package.swift"
+      - "Package.resolved"
+      - ".swift-format"
+      - "Scripts/check-coverage.sh"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      swift: ${{ steps.filter.outputs.swift }}
-    steps:
-      - name: Check for Swift-related changes
-        id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            swift:
-              - "**/*.swift"
-              - "Makefile"
-              - "Package.swift"
-              - "Package.resolved"
-              - ".swift-format"
-              - ".pre-commit-config.yaml"
-              - "Scripts/check-coverage.sh"
-              - ".github/workflows/ci.yml"
-
-  lint-format:
-    name: Lint + Format
-    needs: changes
-    if: needs.changes.outputs.swift == 'true'
-    runs-on: macos-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Verify Host Swift Version
-        run: swift --version
-
-      - name: Cache Pre-Commit Hooks
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pre-commit
-          key: >
-            ${{ runner.os }}-precommit-${{
-            hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-precommit-
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.0
-        with:
-          enable-cache: false
-
-      - name: Run Strict Swift Format Pipeline
-        run: |
-          uvx pre-commit run \
-            --show-diff-on-failure \
-            --color=always \
-            --all-files
-
   macos-test:
-    name: MacOS Build + Tests + Coverage
-    needs: changes
-    if: needs.changes.outputs.swift == 'true'
+    name: macOS Build + Tests + Coverage
     runs-on: macos-latest
     steps:
       - name: Checkout repository
@@ -109,37 +67,3 @@ jobs:
         run: |
           chmod +x ./Scripts/check-coverage.sh
           ./Scripts/check-coverage.sh
-
-  linux-test:
-    name: Linux Build + Tests (Swift ${{ matrix.swift }})
-    needs: changes
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        swift: ["6.2", "6.3"]
-    container: swift:${{ matrix.swift }}
-    env:
-      SWIFT_CHANGED: ${{ needs.changes.outputs.swift }}
-    steps:
-      - name: Checkout repository
-        if: env.SWIFT_CHANGED == 'true'
-        uses: actions/checkout@v7
-
-      - name: Verify Host Swift Version
-        if: env.SWIFT_CHANGED == 'true'
-        run: swift --version
-
-      - name: Cache SwiftPM
-        if: env.SWIFT_CHANGED == 'true'
-        uses: actions/cache@v6
-        with:
-          path: .build
-          key: >
-            linux-swift-${{ matrix.swift }}-${{
-            hashFiles('Package.resolved') }}
-          restore-keys: linux-swift-${{ matrix.swift }}-
-
-      - name: Run Tests
-        if: env.SWIFT_CHANGED == 'true'
-        run: swift test --parallel

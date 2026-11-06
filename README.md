@@ -1,5 +1,7 @@
 # NetSkein
 
+[![CI](https://github.com/orthogonest/netskein/actions/workflows/ci.yml/badge.svg)](https://github.com/orthogonest/netskein/actions/workflows/ci.yml)
+[![Coverage ≥ 90%](https://img.shields.io/badge/coverage-%E2%89%A590%25-brightgreen)](https://github.com/orthogonest/netskein/actions/workflows/ci.yml)
 [![Swift 6.2+](https://img.shields.io/badge/Swift-6.2+-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20iOS%20%7C%20tvOS%20%7C%20watchOS%20%7C%20Linux-lightgrey)](#requirements)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20%2F%20MIT-blue)](#license)
