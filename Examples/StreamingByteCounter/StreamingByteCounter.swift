@@ -21,7 +21,7 @@ struct StreamingByteCounter {
             let counter = ByteCounter()
 
             try await client.get("https://apple.com")
-                .timeout(.seconds(30))
+                .attemptTimeout(.seconds(30))
                 .stream { chunk, received, total in
                     let currentFragmentBytes = chunk.readableBytes
                     print("Received fragment size: \(currentFragmentBytes) bytes")

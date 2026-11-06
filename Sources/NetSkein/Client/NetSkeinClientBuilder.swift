@@ -27,6 +27,7 @@ public struct NetSkeinClientBuilder: Sendable {
     private var cache: HTTPCache?
     private var circuitBreaker: CircuitBreaker?
     private var retryPolicy: RetryPolicy
+    private var callTimeout: TimeAmount?
     private var attemptMiddlewares: [any HTTPMiddleware]
     private var callMiddlewares: [any HTTPMiddleware]
     private var tlsConfiguration: TLSConfiguration?
@@ -158,6 +159,15 @@ extension NetSkeinClientBuilder {
         return copy
     }
 
+    /// Limits every call made by the built client, attempts and waits included; requests can
+    /// change it with ``NetSkeinRequest/callTimeout(_:)``. Calls have no overall limit unless this is set.
+    @discardableResult
+    public func callTimeout(_ duration: TimeAmount) -> Self {
+        var copy = self
+        copy.callTimeout = duration
+        return copy
+    }
+
     /// Adds a middleware that runs for every call sent by the built client: once per call, or
     /// for every attempt (the default), as `scope` says. See ``MiddlewareScope``.
     @discardableResult
@@ -273,6 +283,7 @@ extension NetSkeinClientBuilder {
             circuitBreaker: circuitBreaker,
             transportDecompresses: automaticDecompression,
             retryPolicy: retryPolicy,
+            callTimeout: callTimeout,
             attemptMiddlewares: attemptMiddlewares,
             callMiddlewares: callMiddlewares,
             tracer: resolvedTracer,

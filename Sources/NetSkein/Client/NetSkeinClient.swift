@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Foundation
 import Logging
+import NIOCore
 import NIOHTTP1
 import Tracing
 
@@ -14,6 +15,8 @@ public final class NetSkeinClient: Sendable {
     let callMiddlewares: [any HTTPMiddleware]
     let cache: HTTPCache?
     let circuitBreaker: CircuitBreaker?
+    /// The default for ``NetSkeinRequest/callTimeout(_:)``; `nil` sets no limit.
+    let callTimeout: TimeAmount?
     /// Whether the transport decompresses response bodies but keeps their `Content-Encoding`.
     let transportDecompresses: Bool
     let tracer: (any Tracer)?
@@ -24,7 +27,13 @@ public final class NetSkeinClient: Sendable {
         defaultHeaders: HTTPHeaders = .init(),
         retryPolicy: RetryPolicy = .disabled
     ) {
-        let transport = HTTPClient(eventLoopGroupProvider: .singleton, configuration: .init())
+        var configuration = HTTPClient.Configuration()
+        configuration.timeout = HTTPClient.Configuration.Timeout(
+            connect: .seconds(10),
+            read: .seconds(30),
+            write: .seconds(30)
+        )
+        let transport = HTTPClient(eventLoopGroupProvider: .singleton, configuration: configuration)
         self.init(
             transport: transport,
             defaultHeaders: defaultHeaders,
@@ -49,6 +58,7 @@ public final class NetSkeinClient: Sendable {
         circuitBreaker: CircuitBreaker? = nil,
         transportDecompresses: Bool = false,
         retryPolicy: RetryPolicy = .disabled,
+        callTimeout: TimeAmount? = nil,
         attemptMiddlewares: [any HTTPMiddleware] = [],
         callMiddlewares: [any HTTPMiddleware] = [],
         tracer: (any Tracer)? = InstrumentationSystem.tracer,
@@ -58,6 +68,7 @@ public final class NetSkeinClient: Sendable {
         self.transport = transport
         self.defaultHeaders = defaultHeaders
         self.retryPolicy = retryPolicy
+        self.callTimeout = callTimeout
         self.attemptMiddlewares =
             (cookieJar.map { [CookieMiddleware(jar: $0)] } ?? []) + attemptMiddlewares
         self.callMiddlewares = callMiddlewares

@@ -14,14 +14,16 @@ struct RetryStageTests {
 
     func makeStage(
         maxRetries: Int = 3,
-        maxRetryAfter: TimeAmount = .seconds(60)
+        maxRetryAfter: TimeAmount = .seconds(60),
+        deadline: NIODeadline? = nil
     ) -> RetryStage {
         RetryStage(
             policy: .standard(
                 maxRetries: maxRetries,
                 backoff: .immediate,
                 maxRetryAfter: maxRetryAfter
-            )
+            ),
+            deadline: deadline
         )
     }
 
@@ -135,5 +137,29 @@ extension RetryStageTests {
             }
 
         #expect(result == "done")
+    }
+}
+
+// MARK: - Call Timeout
+
+extension RetryStageTests {
+    @Test(
+        "RetryStageTests: a retry whose wait would pass the deadline ends the call with the last result"
+    )
+    func testDeadlineStopsRetry() async throws {
+        var count = 0
+
+        let result = try await makeStage(deadline: .now() + .milliseconds(100))
+            .run(head, span: nil) { _ in
+                count += 1
+                return success(
+                    "busy",
+                    status: .serviceUnavailable,
+                    headers: ["Retry-After": "1"]
+                )
+            }
+
+        #expect(result == "busy")
+        #expect(count == 1)
     }
 }

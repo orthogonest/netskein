@@ -26,6 +26,9 @@ struct AttemptOutcome<Output> {
 /// the retry policy what is being retried.
 struct RetryStage: Sendable {
     let policy: RetryPolicy
+    /// When the call's ``NetSkeinRequest/callTimeout(_:)`` ends; `nil` without one. A retry
+    /// whose wait would end after it is not made.
+    let deadline: NIODeadline?
 
     /// Makes attempts at `head`, as left by the middleware that runs once per call.
     func run<Output>(
@@ -99,9 +102,26 @@ struct RetryStage: Sendable {
     }
 
     /// How long to wait before attempt `number`: the policy's backoff, or a longer
-    /// `Retry-After`. `nil` when the server asks to wait longer than `maxRetryAfter`, which ends
-    /// the call instead.
+    /// `Retry-After`. `nil` when the server asks to wait longer than `maxRetryAfter`, or when the
+    /// wait would end after the call's deadline, which ends the call instead.
     private func retryDelay<Output>(
+        before number: Int,
+        after outcome: AttemptOutcome<Output>
+    ) -> TimeAmount? {
+        guard let delay = requestedDelay(before: number, after: outcome) else { return nil }
+
+        if let deadline, NIODeadline.now() + delay > deadline {
+            outcome.logger.warning(
+                "Waiting for the next attempt would pass the call timeout. Giving up"
+            )
+            return nil
+        }
+        return delay
+    }
+
+    /// The policy's backoff before attempt `number`, or a longer `Retry-After`; `nil` when the
+    /// server asks to wait longer than `maxRetryAfter`.
+    private func requestedDelay<Output>(
         before number: Int,
         after outcome: AttemptOutcome<Output>
     ) -> TimeAmount? {
