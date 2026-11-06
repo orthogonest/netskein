@@ -71,6 +71,13 @@ A good NetSkein patch should be:
 4. **CI Validation & Code Coverage Gate**: Every opened PR triggers our parallel **GitHub Actions Continuous Integration** grid. The runner will validate style layouts, compile the targets, and execute the test suite.
    - **Absolute Coverage Threshold**: Your PR will be blocked from merging if the automated test coverage falls below the **minimal required project baseline**. Always ensure your new logic is thoroughly covered by tests before pushing.
 
+## Using AI Tools
+
+You may use AI tools to help write your contribution, but you are its author and must be able to explain every change you submit.
+Commits and pull requests must not credit an AI tool as a co-author (for example, `Co-Authored-By: Claude`); a CI check rejects them.
+
+Please read the full [AI Policy](AI_POLICY.md) before opening a pull request.
+
 ## Legal
 
 By contributing to NetSkein, you agree that your contributions will be dual-licensed under the terms of both the **Apache License Version 2.0** and the **MIT License**.
