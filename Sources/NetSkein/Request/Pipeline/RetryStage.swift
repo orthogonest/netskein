@@ -47,11 +47,24 @@ struct RetryStage: Sendable {
         }
 
         let outcome = await attempt(number)
-        guard outcome.isRetryable, await shouldRetry(after: number, outcome) else {
+        guard
+            outcome.isRetryable,
+            await shouldRetry(after: number, outcome),
+            let delay = retryDelay(before: number + 1, after: outcome)
+        else {
             return try outcome.result.get()
         }
 
-        try await backOff(before: number + 1, responseHeaders: outcome.headers)
+        outcome.logger.warning(
+            "Request eligible for retry. Backing off before attempt \(number + 2)",
+            metadata: [
+                "attempt": .string("\(number + 1)"),
+                "max_retries": .string("\(policy.maxRetries)"),
+            ]
+        )
+
+        try await sleep(for: delay)
+
         return try await makeAttempt(number + 1, span: span, attempt)
     }
 
@@ -78,36 +91,40 @@ struct RetryStage: Sendable {
             error: error
         )
 
-        guard await policy.evaluator(retryContext), nextNumber <= policy.maxRetries else {
-            return false
-        }
-
-        outcome.logger.warning(
-            "Request eligible for retry. Backing off before attempt \(nextNumber + 1)",
-            metadata: [
-                "attempt": .string("\(nextNumber)"),
-                "max_retries": .string("\(policy.maxRetries)"),
-            ]
-        )
-
-        return true
+        return await policy.evaluator(retryContext) && nextNumber <= policy.maxRetries
     }
 
-    /// Waits before attempt `number`, as long as the policy's backoff or a `Retry-After`
-    /// header asks, whichever is longer.
-    private func backOff(
+    /// How long to wait before attempt `number`: the policy's backoff, or a longer
+    /// `Retry-After`. `nil` when the server asks to wait longer than `maxRetryAfter`, which ends
+    /// the call instead.
+    private func retryDelay<Output>(
         before number: Int,
-        responseHeaders: HTTPHeaders?
-    ) async throws(NetSkeinError) {
-        var delay = policy.backoff.delay(forAttempt: number)
+        after outcome: AttemptOutcome<Output>
+    ) -> TimeAmount? {
+        let backoff = policy.backoff.delay(forAttempt: number)
 
-        if policy.respectRetryAfterHeader,
-            let retryAfterDelay = RetryAfterParser.parseDelay(from: responseHeaders),
-            retryAfterDelay.nanoseconds > delay.nanoseconds
-        {
-            delay = retryAfterDelay
+        guard
+            policy.respectRetryAfterHeader,
+            let retryAfter = RetryAfterParser.parseDelay(from: outcome.headers)
+        else { return backoff }
+
+        guard retryAfter <= policy.maxRetryAfter else {
+            outcome.logger.warning(
+                "Server asked to retry after longer than maxRetryAfter. Giving up",
+                metadata: [
+                    "retry_after_seconds": .string("\(retryAfter.nanoseconds / 1_000_000_000)"),
+                    "max_retry_after_seconds": .string(
+                        "\(policy.maxRetryAfter.nanoseconds / 1_000_000_000)"
+                    ),
+                ]
+            )
+            return nil
         }
 
+        return max(backoff, retryAfter)
+    }
+
+    private func sleep(for delay: TimeAmount) async throws(NetSkeinError) {
         do {
             try Task.checkCancellation()
             let nanoseconds = UInt64(max(0, delay.nanoseconds))

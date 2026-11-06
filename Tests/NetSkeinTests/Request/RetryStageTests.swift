@@ -1,4 +1,5 @@
 import Logging
+import NIOCore
 import NIOHTTP1
 import Testing
 
@@ -10,9 +11,16 @@ import Testing
 struct RetryStageTests {
     let logger = Logger(label: LoggerLabel.test)
 
-    func makeStage(maxRetries: Int = 3) -> RetryStage {
+    func makeStage(
+        maxRetries: Int = 3,
+        maxRetryAfter: TimeAmount = .seconds(60)
+    ) -> RetryStage {
         RetryStage(
-            policy: .standard(maxRetries: maxRetries, backoff: .immediate),
+            policy: .standard(
+                maxRetries: maxRetries,
+                backoff: .immediate,
+                maxRetryAfter: maxRetryAfter
+            ),
             method: .GET,
             url: "https://api.example.com"
         )
@@ -26,11 +34,15 @@ struct RetryStageTests {
         )
     }
 
-    func success(_ value: String, status: HTTPResponseStatus = .ok) -> AttemptOutcome<String> {
+    func success(
+        _ value: String,
+        status: HTTPResponseStatus = .ok,
+        headers: HTTPHeaders = [:]
+    ) -> AttemptOutcome<String> {
         AttemptOutcome(
             result: .success(value),
             status: status,
-            headers: [:],
+            headers: headers,
             isRetryable: true,
             logger: logger
         )
@@ -85,6 +97,42 @@ extension RetryStageTests {
         let result = try await makeStage()
             .run(span: nil) { number in
                 number == 0 ? success("busy", status: .serviceUnavailable) : success("done")
+            }
+
+        #expect(result == "done")
+    }
+}
+
+// MARK: - Retry-After
+
+extension RetryStageTests {
+    @Test(
+        "RetryStageTests: a Retry-After longer than maxRetryAfter ends the call with the last result"
+    )
+    func testRetryAfterOverLimit() async throws {
+        var count = 0
+
+        let result = try await makeStage(maxRetryAfter: .seconds(10))
+            .run(span: nil) { _ in
+                count += 1
+                return success(
+                    "busy",
+                    status: .serviceUnavailable,
+                    headers: ["Retry-After": "11"]
+                )
+            }
+
+        #expect(result == "busy")
+        #expect(count == 1)
+    }
+
+    @Test("RetryStageTests: a Retry-After within maxRetryAfter is waited for, then retried")
+    func testRetryAfterWithinLimit() async throws {
+        let result = try await makeStage(maxRetryAfter: .zero)
+            .run(span: nil) { number in
+                number == 0
+                    ? success("busy", status: .serviceUnavailable, headers: ["Retry-After": "0"])
+                    : success("done")
             }
 
         #expect(result == "done")
