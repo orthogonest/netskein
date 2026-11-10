@@ -4,10 +4,86 @@ import Logging
 import NIOCore
 import NIOHTTP1
 
+/// A request being described, ready to be sent with ``send()`` or one of the streaming methods.
+///
+/// You get a request from a client method such as ``NetSkeinClient/get(_:)``, then chain methods
+/// that each return a changed copy:
+///
+/// ```swift
+/// let response = try await client.post("https://api.example.com")
+///     .path("users")
+///     .header("Authorization", "Bearer \(token)")
+///     .json(NewUser(name: "Ada"))
+///     .send()
+/// ```
+///
+/// Because each method returns a copy, you can keep a partly built request and send variations
+/// of it.
+///
+/// ### Bodies Checked at Compile Time
+///
+/// `Body` records whether the request can take a body, so mistakes don't compile:
+///
+/// - ``BodyForbidden``: `GET` and `DELETE` requests. Methods such as ``json(_:)`` are
+///   unavailable.
+/// - ``BodyAllowed``: `POST`, `PUT`, `PATCH` and ``NetSkeinClient/request(_:url:)``. Attaching
+///   a body moves the request to ``BodyAttached``.
+/// - ``BodyAttached``: the body is set, so attaching a second one is unavailable.
+///
+/// ## Topics
+///
+/// ### Creating a Request
+///
+/// - ``init(client:method:url:headers:maxResponseBytes:attemptTimeout:retryPolicy:percentEncoder:)``
+///
+/// ### Building the URL
+///
+/// - ``path(_:)``
+/// - ``query(_:)``
+///
+/// ### Setting Headers
+///
+/// - ``header(_:_:)``
+///
+/// ### Attaching a Body
+///
+/// - ``json(_:)``
+/// - ``form(_:)``
+/// - ``multipart(_:)``
+/// - ``file(atPath:chunkSize:onProgress:)``
+/// - ``dangerouslyAllowBody()``
+///
+/// ### Sending
+///
+/// - ``send()``
+/// - ``maxResponseBytes(_:)``
+///
+/// ### Streaming and Downloading
+///
+/// - ``stream()``
+/// - ``stream(_:)``
+/// - ``lines(maxLineLength:)``
+/// - ``download(toFileAtPath:resumption:onProgress:)``
+///
+/// ### Timeouts
+///
+/// - ``callTimeout(_:)``
+/// - ``attemptTimeout(_:)``
+///
+/// ### Retries and Caching
+///
+/// - ``retry(_:)``
+/// - ``cachePolicy(_:)``
+///
+/// ### Middleware
+///
+/// - ``using(_:per:)``
+/// - ``using(per:_:)``
 public struct NetSkeinRequest<Body: BodyState>: Sendable {
     private let client: NetSkeinClient
     private var method: HTTPMethod
     private var url: String
+    /// Starts as the client's default headers, so ``header(_:_:)`` can replace them.
     private var headers: HTTPHeaders
     private var body: BodySource
     /// `nil` means no limit.
@@ -15,9 +91,11 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
     /// `nil` means no limit on the call as a whole.
     private var callTimeout: TimeAmount?
     private var attemptTimeout: TimeAmount
+    /// `nil` uses the client's policy.
     private var retryPolicy: RetryPolicy?
     private var attemptMiddlewares: [any HTTPMiddleware]
     private var callMiddlewares: [any HTTPMiddleware]
+    /// `nil` uses the cache's ``HTTPCache/defaultPolicy``.
     private var cachePolicy: CachePolicy?
     private let percentEncoder: PercentEncoder
 
@@ -53,6 +131,25 @@ public struct NetSkeinRequest<Body: BodyState>: Sendable {
 }
 
 extension NetSkeinRequest where Body == BodyAllowed {
+    /// Creates a request for any method directly, without the client's request methods.
+    ///
+    /// Prefer ``NetSkeinClient/request(_:url:)`` and the other client methods, which also apply the
+    /// client's settings, such as its ``NetSkeinClientBuilder/callTimeout(_:)``. This initializer
+    /// uses the defaults listed below instead.
+    ///
+    /// - Parameters:
+    ///   - client: The client that sends the request.
+    ///   - method: The HTTP method.
+    ///   - url: The full URL, including the scheme.
+    ///   - headers: The headers to send (default: `nil`); `nil` uses the client's default
+    ///     headers.
+    ///   - maxResponseBytes: The largest response body ``send()`` accepts (default: 10 MiB).
+    ///     See ``maxResponseBytes(_:)``.
+    ///   - attemptTimeout: The limit for each attempt (default: 30 seconds). See
+    ///     ``attemptTimeout(_:)``.
+    ///   - retryPolicy: How the request is retried (default: `nil`); `nil` uses the client's
+    ///     policy. See ``retry(_:)``.
+    ///   - percentEncoder: Encodes ``form(_:)`` bodies (default: ``PercentEncoder/default``).
     public init(
         client: NetSkeinClient,
         method: HTTPMethod,
@@ -78,6 +175,21 @@ extension NetSkeinRequest where Body == BodyAllowed {
 }
 
 extension NetSkeinRequest {
+    /// Appends `segment` to the URL's path, with a single `/` between them.
+    ///
+    /// Values you interpolate into the segment are percent-encoded, so a value can't add path
+    /// components or a query of its own:
+    ///
+    /// ```swift
+    /// client.get("https://api.example.com")
+    ///     .path("users/\(username)")  // "a/b" becomes "a%2Fb"
+    /// ```
+    ///
+    /// See ``PathSegment`` for which values are encoded. Call ``path(_:)`` before ``query(_:)``:
+    /// the URL is treated as text, so a segment added after a query lands inside it.
+    ///
+    /// - Parameter segment: The path to append, such as `"users/\(id)"`.
+    /// - Returns: A copy of the request with the longer path.
     @discardableResult
     public func path(_ segment: PathSegment) -> Self {
         var copy = self
@@ -87,6 +199,13 @@ extension NetSkeinRequest {
         return copy
     }
 
+    /// Sets the header `name` to `value`, replacing any value it had, including a default from
+    /// ``NetSkeinClientBuilder/defaultHeaders(_:)``.
+    ///
+    /// - Parameters:
+    ///   - name: The header name, such as `Authorization`. Names are case-insensitive.
+    ///   - value: The header value.
+    /// - Returns: A copy of the request with the header set.
     @discardableResult
     public func header(_ name: String, _ value: String) -> Self {
         var copy = self
@@ -96,6 +215,9 @@ extension NetSkeinRequest {
 
     /// Appends `items` to the URL's query, sorted by name so the same items always produce the
     /// same URL. Items already in the URL keep their place before them.
+    ///
+    /// - Parameter items: The query items to add, by name.
+    /// - Returns: A copy of the request with the longer query.
     @discardableResult
     public func query(_ items: [String: String]) -> Self {
         guard var components = URLComponents(string: url) else { return self }
@@ -113,14 +235,17 @@ extension NetSkeinRequest {
         return copy
     }
 
-    /// The largest response body ``send()`` collects into memory; a larger one fails with a
-    /// `networkFailure`. Defaults to 10 MiB; `nil` removes the limit, so the whole body is held
-    /// in memory however large it is.
+    /// The largest response body ``send()`` collects into memory (default: 10 MiB). A larger one
+    /// fails with a `networkFailure`. `nil` removes the limit, so the whole body is held in
+    /// memory however large it is.
     ///
     /// Only ``send()`` holds the whole body, so only it is limited. ``stream()``,
     /// ``stream(_:)``, ``lines(maxLineLength:)`` and
     /// ``download(toFileAtPath:resumption:onProgress:)`` read the body piece by piece and have no
     /// total limit; ``lines(maxLineLength:)`` limits each line instead.
+    ///
+    /// - Parameter bytes: The largest body accepted, in bytes; `nil` for no limit.
+    /// - Returns: A copy of the request with the new limit.
     @discardableResult
     public func maxResponseBytes(_ bytes: Int?) -> Self {
         var copy = self
@@ -141,6 +266,9 @@ extension NetSkeinRequest {
     /// client's read timeout, but retries and a slowly arriving body can make the total much
     /// longer. Set it when the caller has a time budget; pass `nil` to remove the client's limit
     /// for this request.
+    ///
+    /// - Parameter duration: The longest the whole call can take; `nil` for no limit.
+    /// - Returns: A copy of the request with the new call timeout.
     @discardableResult
     public func callTimeout(_ duration: TimeAmount?) -> Self {
         var copy = self
@@ -148,12 +276,15 @@ extension NetSkeinRequest {
         return copy
     }
 
-    /// Limits each attempt, from sending the request until the response headers arrive; 30
-    /// seconds by default.
+    /// Limits each attempt, from sending the request until the response headers arrive
+    /// (default: 30 seconds).
     ///
     /// It starts over for every retry and does not cover reading the body, which the client's
     /// read timeout limits instead. Raise it for servers that take long to start answering, such
     /// as long polling. See ``callTimeout(_:)`` to limit the whole call.
+    ///
+    /// - Parameter duration: The longest each attempt can wait for response headers.
+    /// - Returns: A copy of the request with the new attempt timeout.
     @discardableResult
     public func attemptTimeout(_ duration: TimeAmount) -> Self {
         var copy = self
@@ -170,6 +301,11 @@ extension NetSkeinRequest {
         fatalError("Unavailable at compile time")
     }
 
+    /// Sets how this request is retried when it fails, instead of the client's
+    /// ``NetSkeinClientBuilder/retryPolicy(_:)``.
+    ///
+    /// - Parameter policy: How this request is retried when it fails.
+    /// - Returns: A copy of the request with the retry policy.
     @discardableResult
     public func retry(_ policy: RetryPolicy) -> Self {
         var copy = self
@@ -183,6 +319,9 @@ extension NetSkeinRequest {
     /// ``CachePolicy/reloadIgnoringCache`` and ``CachePolicy/noStore`` also add their
     /// `Cache-Control` directive to the request, which applies even without a cache. The other
     /// policies have no effect without one.
+    ///
+    /// - Parameter policy: How this request reads from and writes to the cache.
+    /// - Returns: A copy of the request with the cache policy.
     @discardableResult
     public func cachePolicy(_ policy: CachePolicy) -> Self {
         var copy = self
@@ -191,7 +330,13 @@ extension NetSkeinRequest {
     }
 
     /// Adds a middleware for this request only; it runs inside the client's middleware of the
-    /// same scope, once per call or for every attempt (the default). See ``MiddlewareScope``.
+    /// same scope, once per call or for every attempt. See ``MiddlewareScope``.
+    ///
+    /// - Parameters:
+    ///   - middleware: The middleware to add. It runs after the ones added before it.
+    ///   - scope: Whether it runs once per call or for every attempt
+    ///     (default: ``MiddlewareScope/attempt``).
+    /// - Returns: A copy of the request with the middleware added.
     @discardableResult
     public func using(
         _ middleware: some HTTPMiddleware,
@@ -206,6 +351,13 @@ extension NetSkeinRequest {
     }
 
     /// Adds a closure as a middleware for this request only.
+    ///
+    /// - Parameters:
+    ///   - scope: Whether it runs once per call or for every attempt
+    ///     (default: ``MiddlewareScope/attempt``).
+    ///   - intercept: Called with the request, its context, and `next`, which sends the request
+    ///     on. Return the response from `next`, or one of your own.
+    /// - Returns: A copy of the request with the middleware added.
     @discardableResult
     public func using(
         per scope: MiddlewareScope = .attempt,
@@ -221,6 +373,15 @@ extension NetSkeinRequest {
 }
 
 extension NetSkeinRequest where Body == BodyAllowed {
+    /// Attaches `fields` as a URL-encoded form body, such as `name=Ada+Lovelace&role=admin`, and
+    /// sets `Content-Type` to `application/x-www-form-urlencoded`.
+    ///
+    /// Fields are sorted by name, so the same fields always produce the same body.
+    ///
+    /// - Parameter fields: The form fields, by name. Names and values are percent-encoded for
+    ///   you.
+    /// - Returns: A copy of the request with the form as its body.
+    /// - Throws: Nothing at present; the method is declared `throws` to match ``json(_:)``.
     @discardableResult
     public func form(
         _ fields: [String: String]
@@ -252,6 +413,14 @@ extension NetSkeinRequest where Body == BodyAllowed {
         )
     }
 
+    /// Attaches `bodyObject` encoded as JSON, and sets `Content-Type` to `application/json`.
+    ///
+    /// It's encoded with a default `JSONEncoder`, so dates, keys and other values use its
+    /// default strategies.
+    ///
+    /// - Throws: ``NetSkeinError/Kind/invalidPayload`` when `bodyObject` can't be encoded.
+    /// - Parameter bodyObject: The value to send, such as a `Codable` struct.
+    /// - Returns: A copy of the request with the JSON as its body.
     @discardableResult
     public func json(
         _ bodyObject: some Encodable
@@ -290,6 +459,25 @@ extension NetSkeinRequest where Body == BodyAllowed {
         }
     }
 
+    /// Attaches `form` as a `multipart/form-data` body, and sets `Content-Type` with the form's
+    /// boundary.
+    ///
+    /// ```swift
+    /// let form = MultipartForm.builder()
+    ///     .text(name: "title", value: "Holiday")
+    ///     .file(name: "photo", filename: "beach.jpg", contentType: "image/jpeg", body: photo)
+    ///     .build()
+    ///
+    /// try await client.post("https://api.example.com/photos")
+    ///     .multipart(form)
+    ///     .send()
+    /// ```
+    ///
+    /// The whole form is held in memory. To upload one large file, use
+    /// ``file(atPath:chunkSize:onProgress:)`` instead.
+    ///
+    /// - Parameter form: The form to send. See ``MultipartForm``.
+    /// - Returns: A copy of the request with the form as its body.
     @discardableResult
     public func multipart(
         _ form: MultipartForm
@@ -318,6 +506,19 @@ extension NetSkeinRequest where Body == BodyAllowed {
         )
     }
 
+    /// Attaches the file at `path` as the body, read in chunks while it's sent instead of loaded
+    /// into memory, and sets `Content-Type` to `application/octet-stream`.
+    ///
+    /// Set ``header(_:_:)`` afterwards to send a more specific `Content-Type`.
+    ///
+    /// - Parameters:
+    ///   - path: The path of a regular file. Symbolic links are followed.
+    ///   - chunkSize: How many bytes are read from the file at a time (default: 64 KiB).
+    ///   - onProgress: Called as chunks are sent, with the bytes sent so far and the file's size
+    ///     (default: `nil`, for no progress reports).
+    /// - Returns: A copy of the request with the file as its body.
+    /// - Throws: ``NetSkeinError/Kind/ioFailure`` when `path` isn't a regular file or can't be
+    ///   read. The check happens here, before the request is sent.
     @discardableResult
     public func file(
         atPath path: String,
@@ -372,6 +573,13 @@ extension NetSkeinRequest where Body == BodyAllowed {
 }
 
 extension NetSkeinRequest where Body == BodyForbidden {
+    /// Lets a `GET` or `DELETE` request have a body.
+    ///
+    /// HTTP gives these bodies no meaning, and many servers, proxies and caches drop or reject
+    /// them. Use it only for an API that requires one, such as a search endpoint that takes its
+    /// query as a `GET` body.
+    ///
+    /// - Returns: A copy of the request that can take a body.
     @discardableResult
     public func dangerouslyAllowBody() -> NetSkeinRequest<BodyAllowed> {
         NetSkeinRequest<BodyAllowed>(
@@ -542,6 +750,26 @@ extension NetSkeinRequest {
 }
 
 extension NetSkeinRequest {
+    /// Sends the request and collects the whole response body in memory.
+    ///
+    /// Any status counts as a response, so a `404` or `500` returns normally. Call
+    /// ``NetSkeinResponse/validate()`` to turn statuses outside `200..<300` into errors:
+    ///
+    /// ```swift
+    /// let user = try await client.get(url)
+    ///     .send()
+    ///     .validate()
+    ///     .json(User.self)
+    /// ```
+    ///
+    /// Failed attempts are retried as the retry policy says, and the response may come from the
+    /// client's ``HTTPCache``. The body is limited by ``maxResponseBytes(_:)``; to read a large
+    /// body without holding it in memory, use ``stream()`` or
+    /// ``download(toFileAtPath:resumption:onProgress:)``.
+    ///
+    /// - Returns: The response, with its body.
+    /// - Throws: A ``NetSkeinError`` when no response arrives once the retry policy gives up, the
+    ///   call runs out of time, or the body is larger than ``maxResponseBytes(_:)``.
     public func send() async throws(NetSkeinError) -> NetSkeinResponse {
         try await executor(buffered: true).send()
     }
@@ -614,9 +842,9 @@ extension NetSkeinRequest {
     /// body without line endings arrives as a single line once it ends. See ``NetSkeinLines`` for
     /// how lines are split, and ``stream()`` for retries, caching and tracing, which work the same.
     ///
-    /// - Parameter maxLineLength: The longest line accepted, in bytes; a longer one makes the loop
-    ///   throw `invalidPayload`, so a server cannot make one endless line use unbounded memory.
-    ///   Defaults to 1 MiB; `nil` removes the limit, so a line is held in memory however long it
+    /// - Parameter maxLineLength: The longest line accepted, in bytes (default: 1 MiB); a longer
+    ///   one makes the loop throw `invalidPayload`, so a server cannot make one endless line use
+    ///   unbounded memory. `nil` removes the limit, so a line is held in memory however long it
     ///   gets.
     /// - Returns: The response, with its body still to be read.
     /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, or the
