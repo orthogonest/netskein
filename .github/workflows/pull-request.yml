@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       swift: ${{ steps.filter.outputs.swift }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - name: Check for Swift-related changes
         id: filter
@@ -35,6 +36,25 @@ jobs:
               - ".pre-commit-config.yaml"
               - "Scripts/check-coverage.sh"
               - ".github/workflows/pull-request.yml"
+            docs:
+              - "Sources/**"
+              - "Package.swift"
+              - "Package.resolved"
+              - "Scripts/build-docs.sh"
+              - ".github/workflows/pull-request.yml"
+
+  docs:
+    name: Documentation
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    container: swift:6.3
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build documentation
+        run: ./Scripts/build-docs.sh
 
   lint-format:
     name: Lint + Format

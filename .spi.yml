@@ -1,0 +1,7 @@
+---
+# Swift Package Index configuration: which modules get hosted DocC
+# documentation. See the SPIManifest docs on swiftpackageindex.com.
+version: 1
+builder:
+  configs:
+    - documentation_targets: [NetSkein, NetSkeinTesting]
