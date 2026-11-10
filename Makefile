@@ -1,4 +1,4 @@
-.PHONY: help build _building clean _cleaning test _testing test-linux coverage _prepare-cov 
+.PHONY: help build _building clean _cleaning test _testing test-linux coverage _prepare-cov docs docs-preview
 
 # --- Colors ---
 
@@ -103,3 +103,14 @@ cov:
 
 _prepare-cov:
 	@mkdir -p $(COV_OUT_DIR)
+
+# --- Documentation ---
+
+## Build the DocC documentation and fail on warnings
+docs:
+	@echo "$(CYAN)>>> Building Documentation...$(RESET)"
+	@./Scripts/build-docs.sh
+
+## Build the NetSkein documentation and preview it in the browser
+docs-preview:
+	@./Scripts/build-docs.sh --preview
