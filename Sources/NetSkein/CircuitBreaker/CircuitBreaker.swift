@@ -7,8 +7,8 @@ import NIOHTTP1
 /// Stops sending requests to a server that keeps failing, so the server can recover and callers
 /// fail fast instead of waiting on it.
 ///
-/// Create one, keep a reference, and pass it to the client builder's `circuitBreaker(_:)`. The
-/// breaker is safe to share between clients that call the same servers.
+/// Create one, keep a reference, and pass it to ``NetSkeinClientBuilder/circuitBreaker(_:)``.
+/// The breaker is safe to share between clients that call the same servers.
 ///
 /// ```swift
 /// let breaker = CircuitBreaker(failureThreshold: 5, openDuration: .seconds(30))
@@ -31,6 +31,22 @@ import NIOHTTP1
 /// The client places the breaker between the cache and the network. Fresh cached responses are
 /// still served while a circuit is open, and with ``HTTPCache``'s `maxStaleOnError` a stale one
 /// can stand in for the rejected request.
+///
+/// ## Topics
+///
+/// ### Creating a Breaker
+///
+/// - ``init(failureThreshold:openDuration:halfOpenMaxRequests:key:isFailure:)``
+/// - ``Key``
+/// - ``FailureEvaluator``
+/// - ``origin(of:)``
+/// - ``isServerFailure(_:)``
+///
+/// ### Inspecting and Resetting Circuits
+///
+/// - ``state(for:)``
+/// - ``State``
+/// - ``reset()``
 public final class CircuitBreaker: Sendable {
     /// Names the circuit a request belongs to.
     public typealias Key = @Sendable (RequestHead) -> String
@@ -54,20 +70,25 @@ public final class CircuitBreaker: Sendable {
     let halfOpenMaxRequests: Int
     let key: Key
     let isFailure: FailureEvaluator
+    /// The clock; tests replace it to move time forward.
     let now: @Sendable () -> Date
     /// The circuits that are not closed with zero failures; a missing key is a healthy circuit.
     private let circuits: NIOLockedValueBox<[String: Circuit]>
 
+    /// Creates a breaker that opens a circuit after `failureThreshold` failures in a row.
+    ///
     /// - Parameters:
-    ///   - failureThreshold: Failures in a row that open a circuit. At least 1.
-    ///   - openDuration: How long an open circuit rejects requests before allowing a trial.
-    ///   - halfOpenMaxRequests: Trial requests allowed at the same time while half-open. At
-    ///     least 1.
-    ///   - key: Names the circuit a request belongs to; ``origin(of:)`` by default, so each
-    ///     server has its own.
-    ///   - isFailure: Whether an attempt counts as a failure; ``isServerFailure(_:)`` by
-    ///     default: network failures and `500`, `502`, `503` and `504`. Other statuses, such as
-    ///     `404` or `429`, mean the server is answering.
+    ///   - failureThreshold: Failures in a row that open a circuit (default: 5). Values below 1
+    ///     count as 1.
+    ///   - openDuration: How long an open circuit rejects requests before allowing a trial
+    ///     (default: 30 seconds).
+    ///   - halfOpenMaxRequests: Trial requests allowed at the same time while half-open
+    ///     (default: 1). Values below 1 count as 1.
+    ///   - key: Names the circuit a request belongs to (default: ``origin(of:)``, so each
+    ///     server has its own).
+    ///   - isFailure: Whether an attempt counts as a failure (default: ``isServerFailure(_:)``:
+    ///     network failures and `500`, `502`, `503` and `504`). Other statuses, such as `404` or
+    ///     `429`, mean the server is answering.
     public convenience init(
         failureThreshold: Int = 5,
         openDuration: TimeAmount = .seconds(30),
@@ -109,7 +130,12 @@ public final class CircuitBreaker: Sendable {
 
 extension CircuitBreaker {
     /// The request's origin, its scheme, host and port, such as `https://api.example.com:8443`.
-    /// A URL without a host is used as it is.
+    ///
+    /// The scheme and host are lowercased. The port is included only when the URL has one, so
+    /// `https://example.com` and `https://example.com:443` are different circuits.
+    ///
+    /// - Parameter request: The request to name the circuit of.
+    /// - Returns: The origin, or the whole URL when it has no host.
     public static func origin(of request: RequestHead) -> String {
         guard
             let components = URLComponents(string: request.url),
@@ -127,6 +153,9 @@ extension CircuitBreaker {
     }
 
     /// Whether the server failed: a network failure, or `500`, `502`, `503` or `504`.
+    ///
+    /// - Parameter outcome: The attempt's response status, or the error it failed with.
+    /// - Returns: `true` when the outcome counts as a failure.
     public static func isServerFailure(
         _ outcome: Result<HTTPResponseStatus, NetSkeinError>
     ) -> Bool {
@@ -144,6 +173,9 @@ extension CircuitBreaker {
     ///
     /// An open circuit whose `until` has passed reports `open` until a request arrives and
     /// makes it half-open.
+    ///
+    /// - Parameter key: The circuit's name, as returned by the breaker's `key`.
+    /// - Returns: The circuit's state; ``State/closed`` for a circuit with no requests yet.
     public func state(for key: String) -> State {
         switch circuits.withLockedValue({ $0[key] }) {
         case nil, .closed: .closed
