@@ -12,7 +12,7 @@ public enum RedirectPolicy: Sendable {
     case `default`
     /// Follows no redirects: a `3xx` response is returned as it is.
     case disabled
-    /// Follows up to `maxRedirects` redirects in a row; 0 or less acts like ``disabled``.
+    /// Follows up to `maxRedirects` redirects in a row. 0 or less acts like ``disabled``.
     case limited(maxRedirects: Int)
 }
 

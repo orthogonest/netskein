@@ -4,7 +4,7 @@ import NIOCore
 /// How long a ``RetryPolicy`` waits before each retry.
 ///
 /// When the response has a `Retry-After` header that asks for longer, the policy waits that
-/// long instead; see ``RetryPolicy/respectRetryAfterHeader``.
+/// long instead. See ``RetryPolicy/respectRetryAfterHeader``.
 ///
 /// ## Topics
 ///

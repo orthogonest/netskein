@@ -31,7 +31,7 @@ public final class MockHTTPClient: Sendable {
     /// Every request this transport received, oldest first, including ones no stub matched.
     ///
     /// Requests answered by the cache never reach the transport, so they are not here. Request
-    /// bodies cannot be read back from `HTTPClientRequest`; check them in a stub's
+    /// bodies cannot be read back from `HTTPClientRequest`. Check them in a stub's
     /// `requestValidator` or in a middleware instead.
     public var requests: [HTTPClientRequest] {
         received.withLockedValue { $0 }
@@ -64,13 +64,13 @@ extension MockHTTPClient: HTTPTransport {
             throw NetSkeinError.custom(
                 kind: .clientError,
                 message: """
-                    No HTTPStub matches \(request.method.rawValue) \(request.url); add one, for example \
+                    No HTTPStub matches \(request.method.rawValue) \(request.url). Add one, for example \
                     HTTPStub.request(.\(request.method.rawValue), url: "\(request.url)")
                     """
             )
         }
 
-        // Each call to a route uses the next matching stub; calls beyond them reuse the last one
+        // Each call to a route uses the next matching stub. Calls beyond them reuse the last one
         let matchingStub = matches[min(currentCallCount, matches.count) - 1]
 
         if let validator = matchingStub.requestValidator {

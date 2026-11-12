@@ -26,7 +26,7 @@ public struct CachedResponse: Sendable {
     /// caching headers. Such entries are only used by requests with the same policy.
     public let isForced: Bool
 
-    /// How old the response already was when it was received (RFC 9111 §4.2.3); it only depends
+    /// How old the response already was when it was received (RFC 9111 §4.2.3). It only depends
     /// on the stored headers and times, so it is worked out once.
     private let initialAge: TimeInterval
 
@@ -78,7 +78,7 @@ extension CachedResponse {
 
     /// How long the response stays fresh, in seconds (RFC 9111 §4.2.1).
     ///
-    /// `max-age` wins over `Expires`; an invalid `Expires` means already expired. Without
+    /// `max-age` wins over `Expires`. An invalid `Expires` means already expired. Without
     /// either, `defaultTTL` applies to responses that are cacheable by default.
     func freshnessLifetime(defaultTTL: TimeAmount?) -> TimeInterval {
         let cacheControl = cacheControl
@@ -152,7 +152,7 @@ extension CachedResponse {
     ) -> CachedResponse {
         var headers = headers
 
-        // `Age` and `Date` described the old response; keeping them would make the confirmed copy
+        // `Age` and `Date` described the old response. Keeping them would make the confirmed copy
         // look as old as before. Without new ones, `Date` becomes the time the 304 arrived
         headers.remove(name: "Age")
         headers.remove(name: "Date")

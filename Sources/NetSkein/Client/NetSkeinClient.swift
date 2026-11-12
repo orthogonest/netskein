@@ -55,7 +55,7 @@ public final class NetSkeinClient: Sendable {
     let callMiddlewares: [any HTTPMiddleware]
     let cache: HTTPCache?
     let circuitBreaker: CircuitBreaker?
-    /// The default for ``NetSkeinRequest/callTimeout(_:)``; `nil` sets no limit.
+    /// The default for ``NetSkeinRequest/callTimeout(_:)``. `nil` sets no limit.
     let callTimeout: TimeAmount?
     /// Whether the transport decompresses response bodies but keeps their `Content-Encoding`.
     let transportDecompresses: Bool
@@ -101,30 +101,30 @@ public final class NetSkeinClient: Sendable {
     /// `circuitBreaker` is set.
     ///
     /// Responses are cached as described by ``HTTPCache`` when `cache` is set. The transport must
-    /// not decompress response bodies; build the client with ``NetSkeinClientBuilder`` to combine
+    /// not decompress response bodies. Build the client with ``NetSkeinClientBuilder`` to combine
     /// caching with automatic decompression.
     ///
     /// - Parameters:
     ///   - transport: Sends the requests, such as an `HTTPClient` or a fake transport in tests.
     ///   - defaultHeaders: Headers sent with every request (default: none). A request's own
     ///     ``NetSkeinRequest/header(_:_:)`` replaces a default with the same name.
-    ///   - cookieJar: Stores cookies that responses set and sends them back (default: `nil`);
+    ///   - cookieJar: Stores cookies that responses set and sends them back (default: `nil`).
     ///     `nil` keeps no cookies.
-    ///   - cache: Caches responses (default: `nil`); `nil` caches nothing.
-    ///   - circuitBreaker: Rejects requests to servers that keep failing (default: `nil`); `nil`
+    ///   - cache: Caches responses (default: `nil`). `nil` caches nothing.
+    ///   - circuitBreaker: Rejects requests to servers that keep failing (default: `nil`). `nil`
     ///     never rejects.
     ///   - transportDecompresses: Whether `transport` decompresses response bodies
     ///     (default: `false`). Set it to `true` when it does, so the cache stores bodies
     ///     correctly.
     ///   - retryPolicy: How failed requests are retried (default: ``RetryPolicy/disabled``).
     ///     Requests can change it with ``NetSkeinRequest/retry(_:)``.
-    ///   - callTimeout: The limit for each whole call (default: `nil`); `nil` sets none. Requests
+    ///   - callTimeout: The limit for each whole call (default: `nil`). `nil` sets none. Requests
     ///     can change it with ``NetSkeinRequest/callTimeout(_:)``.
     ///   - attemptMiddlewares: Middleware that runs for every attempt, in order (default: none).
     ///     See ``MiddlewareScope``.
     ///   - callMiddlewares: Middleware that runs once per call, around all its attempts
     ///     (default: none).
-    ///   - tracer: Reports a span for each request (default: the globally bootstrapped tracer);
+    ///   - tracer: Reports a span for each request (default: the globally bootstrapped tracer).
     ///     `nil` turns tracing off.
     ///   - logger: The logger that requests write to.
     ///   - percentEncoder: Encodes ``NetSkeinRequest/form(_:)`` bodies
@@ -243,7 +243,7 @@ extension NetSkeinClient {
 
     /// Closes the client's connections and releases its resources.
     ///
-    /// Call it once, when you're done with the client; requests sent afterwards fail. Wait for
+    /// Call it once, when you're done with the client. Requests sent afterwards fail. Wait for
     /// requests in flight to finish first.
     ///
     /// - Throws: A ``NetSkeinError`` of kind ``NetSkeinError/Kind/ioFailure`` when the

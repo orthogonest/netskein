@@ -9,7 +9,7 @@ import Tracing
 /// Makes one attempt: prepares the request for the operation, sends it through the middleware
 /// and transport, and lets the operation handle the response, body included.
 ///
-/// Never throws; every failure is reported in the ``AttemptOutcome`` for the retry stage to
+/// Never throws. Every failure is reported in the ``AttemptOutcome`` for the retry stage to
 /// judge.
 struct AttemptStage: Sendable {
     let transport: any HTTPTransport
@@ -17,7 +17,7 @@ struct AttemptStage: Sendable {
     let body: BodySource
     let timeout: TimeAmount
     let middlewares: [any HTTPMiddleware]
-    /// Sent as `X-Request-ID`; the same for every attempt of a call.
+    /// Sent as `X-Request-ID`. The same for every attempt of a call.
     let requestID: String
 
     /// Makes attempt `number` at `head`, as left by the middleware that runs once per call.

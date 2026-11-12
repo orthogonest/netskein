@@ -260,7 +260,7 @@ extension DiskCacheStorageTests {
             .store([sampleEntry(body: "kept")], for: url)
         let reopened = try DiskCacheStorage(directory: directory, maxBytes: 10_000)
 
-        // The first lookup builds the index; the second reads the file
+        // The first lookup builds the index. The second reads the file
         for _ in 0..<2 {
             let cancelled = Task {
                 withUnsafeCurrentTask { $0?.cancel() }

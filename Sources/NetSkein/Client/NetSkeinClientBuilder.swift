@@ -308,7 +308,7 @@ extension NetSkeinClientBuilder {
         return copy
     }
 
-    /// Limits every call made by the built client, attempts and waits included; requests can
+    /// Limits every call made by the built client, attempts and waits included. Requests can
     /// change it with ``NetSkeinRequest/callTimeout(_:)``. Calls have no overall limit unless this is set.
     ///
     /// - Parameter duration: The longest a whole call can take, attempts and waits included.
@@ -424,7 +424,7 @@ extension NetSkeinClientBuilder {
 extension NetSkeinClientBuilder {
     /// Creates a client with the settings so far.
     ///
-    /// Each call creates a new client with its own connections; call
+    /// Each call creates a new client with its own connections. Call
     /// ``NetSkeinClient/shutdown()`` on each one when you're done with it.
     public func build() -> NetSkeinClient {
         var config = HTTPClient.Configuration()

@@ -219,7 +219,7 @@ extension DownloadOperation: RequestOperation {
         writtenHeaders = response.headers
     }
 
-    /// The head of the response written to the file; its body is already on disk.
+    /// The head of the response written to the file. Its body is already on disk.
     func response(for output: Output) -> HTTPClientResponse {
         HTTPClientResponse(status: writtenStatus, headers: writtenHeaders)
     }

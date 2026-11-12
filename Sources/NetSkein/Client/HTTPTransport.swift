@@ -5,8 +5,8 @@ import NIOCore
 /// The connection layer a ``NetSkeinClient`` sends requests through.
 ///
 /// AsyncHTTPClient's `HTTPClient` conforms, and it's what ``NetSkeinClientBuilder`` creates.
-/// Conform your own type to replace the network, for example with canned responses in tests;
-/// the `NetSkeinTesting` library provides one. Pass it to
+/// Conform your own type to replace the network, for example with canned responses in tests.
+/// The `NetSkeinTesting` library provides one. Pass it to
 /// ``NetSkeinClient/init(transport:defaultHeaders:cookieJar:cache:circuitBreaker:transportDecompresses:retryPolicy:callTimeout:attemptMiddlewares:callMiddlewares:tracer:logger:percentEncoder:)``.
 public protocol HTTPTransport: Sendable {
     /// Sends `request` and returns the response once its headers arrive, with the body still

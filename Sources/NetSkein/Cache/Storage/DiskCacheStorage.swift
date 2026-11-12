@@ -17,9 +17,9 @@ import NIOPosix
 ///
 /// Each URL is one file in `directory`, named after a hash of the URL and holding all of its
 /// `Vary` variants. Files are written in the `.partial` subdirectory and then renamed into
-/// place, so a crash never leaves a partial entry; leftovers are cleared on the next start. A
+/// place, so a crash never leaves a partial entry. Leftovers are cleared on the next start. A
 /// file that cannot be read, was written by another format version, or belongs to another URL
-/// is treated as missing; unreadable ones are deleted. File access runs on NIO's thread pool,
+/// is treated as missing. Unreadable ones are deleted. File access runs on NIO's thread pool,
 /// off Swift's cooperative threads, and finishes even when the request that started it is
 /// cancelled.
 ///
@@ -45,15 +45,15 @@ public actor DiskCacheStorage: CacheStorage {
     private var files: [String: IndexEntry]
     private var totalBytes: Int
     private var clock: UInt64
-    /// Reads the directory on first use, rather than in `init`; every caller waits for the same
+    /// Reads the directory on first use, rather than in `init`. Every caller waits for the same
     /// load.
     private var loading: Task<Void, Never>?
 
     /// - Parameters:
-    ///   - directory: Where the files are kept; created if missing. Use a caches directory, so
+    ///   - directory: Where the files are kept. Created if missing. Use a caches directory, so
     ///     the system may reclaim the space when the device runs low.
     ///   - maxBytes: The most the files may take together before the least recently used are
-    ///     removed. It counts file sizes; the disk may use somewhat more, since files occupy
+    ///     removed. It counts file sizes. The disk may use somewhat more, since files occupy
     ///     whole blocks.
     /// - Throws: When `directory` cannot be created.
     public init(directory: String, maxBytes: Int) throws {
@@ -80,10 +80,10 @@ extension DiskCacheStorage {
         await ensureLoaded()
         let name = Self.fileName(for: url)
 
-        // Most lookups are misses; the index answers them without touching the disk
+        // Most lookups are misses. The index answers them without touching the disk
         guard let stored = files[name] else { return [] }
 
-        // Larger than anything this storage writes, so not one of its files; never read it
+        // Larger than anything this storage writes, so not one of its files. Never read it
         guard stored.bytes <= maxBytes else {
             await discard(name)
             return []
@@ -95,14 +95,14 @@ extension DiskCacheStorage {
             return CacheFileCodec.decode(ByteBuffer(bytes: data))
         }
 
-        // `perform` adds its own optional for a failed read; either way the file is unusable
+        // `perform` adds its own optional for a failed read. Either way, the file is unusable
         guard case let .some(.some(decoded)) = decoded else {
             // Unreadable, truncated or from another format version: it will never be usable
             await discard(name)
             return []
         }
 
-        // Another URL with the same hash owns this file; leave it for that URL
+        // Another URL with the same hash owns this file. Leave it for that URL
         guard decoded.url == url else { return [] }
 
         files[name]?.lastUsed = tick()
@@ -240,7 +240,7 @@ extension DiskCacheStorage {
         let bytes: Int
         let modified: Date
 
-        /// `nil` when the attributes lack a size or modification date; such a file is ignored.
+        /// `nil` when the attributes lack a size or modification date. Such a file is ignored.
         init?(name: String, attributes: [FileAttributeKey: Any]) {
             guard
                 let bytes = attributes[.size] as? Int,
@@ -276,7 +276,7 @@ extension DiskCacheStorage {
         directory + "/" + name
     }
 
-    /// Runs blocking file work on the thread pool; `nil` when it throws.
+    /// Runs blocking file work on the thread pool. `nil` when it throws.
     @discardableResult
     private func perform<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async -> T? {
         let threadPool = self.threadPool

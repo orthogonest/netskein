@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Foundation
 import NIOCore
 
+/// The body a request sends, turned into a transport body once per attempt.
 enum BodySource: Sendable {
     case none
     case bytes(ByteBuffer)

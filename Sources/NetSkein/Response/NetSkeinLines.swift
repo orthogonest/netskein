@@ -3,9 +3,9 @@ import NIOHTTP1
 
 /// A response whose body is read line by line, each line delivered as soon as it is complete.
 ///
-/// Returned by ``NetSkeinRequest/lines(maxLineLength:)``, or by ``NetSkeinStream/lines(maxLineLength:)``
-/// when the headers should be checked first. Suited to line-based formats such as server-sent
-/// events, JSON Lines and log streams:
+/// Returned by ``NetSkeinRequest/lines(maxLineLength:)``, or by
+/// ``NetSkeinStream/lines(maxLineLength:)`` when the headers should be checked first. Suited
+/// to line-based formats such as server-sent events, JSON Lines and log streams:
 ///
 /// ```swift
 /// for try await line in try await client.get(url).lines() {
@@ -15,13 +15,25 @@ import NIOHTTP1
 ///
 /// Lines end at `\n`, `\r\n` or a lone `\r`, and are delivered without their line ending.
 /// Empty lines are delivered too, as `""`, since formats like server-sent events use them to
-/// separate entries. A last line without a line ending is delivered once the body ends; a
+/// separate entries. A last line without a line ending is delivered once the body ends. A
 /// body ending with a line ending does not produce an extra empty line. Each line is decoded
 /// as UTF-8 once complete, so a character split across network packets stays intact, and
 /// invalid bytes become `U+FFFD`.
 ///
 /// Like ``NetSkeinStream``, the body can be iterated once, and errors thrown while iterating
 /// are always ``NetSkeinError``.
+///
+/// ## Topics
+///
+/// ### Reading the Head
+///
+/// - ``status``
+/// - ``headers``
+///
+/// ### Reading Lines
+///
+/// - ``makeAsyncIterator()``
+/// - ``AsyncIterator``
 public struct NetSkeinLines: Sendable {
     private let stream: NetSkeinStream
     /// `nil` means no limit.
@@ -34,18 +46,26 @@ public struct NetSkeinLines: Sendable {
 }
 
 extension NetSkeinLines {
+    /// The response status, always in `200..<300`.
     public var status: HTTPResponseStatus { stream.status }
+    /// The response headers.
     public var headers: HTTPHeaders { stream.headers }
 }
 
 extension NetSkeinLines: AsyncSequence {
+    /// A line, without its line ending.
     public typealias Element = String
 
+    /// Returns an iterator over the body's lines. Call it once.
+    ///
+    /// - Returns: The iterator.
     public func makeAsyncIterator() -> AsyncIterator {
         AsyncIterator(chunks: stream.makeAsyncIterator(), maxLineLength: maxLineLength)
     }
 
+    /// Reads the body's lines as they arrive.
     public struct AsyncIterator: AsyncIteratorProtocol {
+        /// The error thrown while reading.
         public typealias Failure = NetSkeinError
 
         private static let lineFeed = UInt8(ascii: "\n")
@@ -64,6 +84,7 @@ extension NetSkeinLines: AsyncSequence {
         /// Set after a `\r`, so a `\n` right after it, even in the next chunk, ends no new line.
         private var skipsLineFeed: Bool
 
+        /// Set once the body has ended, so later calls return `nil`.
         private var isFinished: Bool
 
         fileprivate init(chunks: NetSkeinStream.AsyncIterator, maxLineLength: Int?) {
@@ -77,9 +98,11 @@ extension NetSkeinLines: AsyncSequence {
 
         /// The next line, or `nil` once the body has ended.
         ///
-        /// - Throws: ``NetSkeinError`` of kind `invalidPayload` when a line is longer than
-        ///   `maxLineLength` bytes, or of kind `networkFailure` when the connection drops or the
-        ///   task is cancelled.
+        /// - Returns: The next line, or `nil` at the end of the body.
+        /// - Throws: A ``NetSkeinError`` of kind ``NetSkeinError/Kind/invalidPayload`` when a
+        ///   line is longer than `maxLineLength` bytes, or of kind
+        ///   ``NetSkeinError/Kind/networkFailure`` when the connection drops or the task is
+        ///   cancelled.
         public mutating func next() async throws(Failure) -> String? {
             while !isFinished {
                 if let line = try lineFromPending() { return line }
@@ -93,8 +116,8 @@ extension NetSkeinLines: AsyncSequence {
             return nil
         }
 
-        /// The next complete line in the bytes received so far, or `nil` when they end mid-line;
-        /// the incomplete rest is kept for when more of the body arrives.
+        /// The next complete line in the bytes received so far, or `nil` when they end mid-line.
+        /// The incomplete rest is kept for when more of the body arrives.
         private mutating func lineFromPending() throws(NetSkeinError) -> String? {
             if skipsLineFeed, let first = pending.readableBytesView.first {
                 skipsLineFeed = false

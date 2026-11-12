@@ -179,7 +179,7 @@ extension CacheExchange {
         if response.status == .notModified {
             guard HTTPValidator(entry.headers).matches(HTTPValidator(response.headers)) else {
                 // The 304 is for another representation: fetch this one in full. Middleware may call
-                // `next` more than once; here it is the transport, so this is a second request
+                // `next` more than once. Here it is the transport, so this is a second request
                 let full = try await next(request)
                 let fullReason = "\(reason); fwd-status=\(full.status.code)"
                 return try await store(
@@ -209,8 +209,8 @@ extension CacheExchange {
         }
 
         if response.status.isServerFailure, let stale = staleOnError(entry) {
-            // Read the unused body to the end so the connection can be reused instead of closed;
-            // the limit avoids downloading a large error page for nothing
+            // Read the unused body to the end so the connection can be reused instead of closed.
+            // The limit avoids downloading a large error page for nothing
             _ = try? await response.body.collect(upTo: cache.maxEntryBytes)
             return stale
         }
@@ -376,7 +376,7 @@ private struct RequestDirectives {
     init(_ headers: HTTPHeaders, policy: CachePolicy) {
         let cacheControl = CacheControl(headers)
         noStore = cacheControl.contains("no-store")
-        // RFC 9111 §5.4 deprecates Pragma; its no-cache is still honoured, as old clients and
+        // RFC 9111 §5.4 deprecates Pragma. Its no-cache is still honoured, as old clients and
         // proxies send it, but only without a Cache-Control, which takes precedence
         noCache =
             cacheControl.contains("no-cache")
