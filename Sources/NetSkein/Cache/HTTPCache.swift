@@ -61,7 +61,7 @@ public final class HTTPCache: Sendable {
     ///     `Cache-Status: NetSkein; fwd=stale; detail=error`, and are returned without retrying.
     ///     A server's own `stale-if-error` directive is ignored, so serving stale data on error
     ///     stays the app's choice.
-    ///   - defaultPolicy: The policy for requests that do not set their own; see
+    ///   - defaultPolicy: The policy for requests that do not set their own. See
     ///     ``defaultPolicy``.
     public convenience init(
         storage: some CacheStorage = MemoryCacheStorage(maxBytes: 10 * 1024 * 1024),
@@ -80,7 +80,7 @@ public final class HTTPCache: Sendable {
         )
     }
 
-    /// The full initializer, with the clock injected; `NetSkeinTesting` uses it for
+    /// The full initializer, with the clock injected. `NetSkeinTesting` uses it for
     /// `HTTPCache.testing(…)`.
     package init(
         storage: any CacheStorage,
@@ -103,7 +103,7 @@ extension HTTPCache {
     /// The policy for requests that do not set one with ``NetSkeinRequest/cachePolicy(_:)``.
     ///
     /// It can be changed at any time, for example to ``CachePolicy/returnCacheElseLoad`` while
-    /// the app is offline; requests already sent keep the policy they started with.
+    /// the app is offline. Requests already sent keep the policy they started with.
     public var defaultPolicy: CachePolicy {
         get { policy.withLockedValue { $0 } }
         set { policy.withLockedValue { $0 = newValue } }

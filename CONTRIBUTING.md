@@ -84,6 +84,7 @@ Every public declaration needs a doc comment:
 - **Parameters**: every function and initializer that takes arguments documents each one, with `- Parameter name:` for one argument or `- Parameters:` for several.
 - **Returns**: every function that returns a value has `- Returns:`. Fluent methods say what the copy holds, such as "A copy of the request with the header set."
 - **Throws**: every throwing function has `- Throws:`, naming the ``NetSkeinError/Kind`` thrown and when.
+- **Punctuation**: write the way people write prose. Prefer a period or a comma to a semicolon, and split two complete thoughts into two sentences rather than joining them with a comma. Semicolons belong only where the syntax being described uses them, such as `text/plain; charset=utf-8`.
 - **Links**: refer to other symbols with double backticks, such as ` ``NetSkeinRequest/send()`` `, so DocC checks that they exist.
 
 Non-public declarations need a comment only when their name and type leave something out, such as what `nil` means, a unit, an invariant, or why it exists:
@@ -110,7 +111,7 @@ public func header(_ name: String, _ value: String) -> Self
 ## Using AI Tools
 
 You may use AI tools to help write your contribution, but you are its author and must be able to explain every change you submit.
-Commits and pull requests must not credit an AI tool as a co-author (for example, `Co-Authored-By: Claude`); a CI check rejects them.
+Commits and pull requests must not credit an AI tool as a co-author (for example, `Co-Authored-By: Claude`). A CI check rejects them.
 
 Please read the full [AI Policy](AI_POLICY.md) before opening a pull request.
 

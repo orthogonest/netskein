@@ -77,7 +77,7 @@ extension TestClientBuilder {
         return copy
     }
 
-    /// Limits every call made by the built client, attempts and waits included; requests can
+    /// Limits every call made by the built client, attempts and waits included. Requests can
     /// change it with `NetSkeinRequest.callTimeout(_:)`. Calls have no overall limit unless this is set.
     @discardableResult
     public func callTimeout(_ duration: TimeAmount) -> Self {

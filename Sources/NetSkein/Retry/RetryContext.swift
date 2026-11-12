@@ -19,10 +19,10 @@ public struct RetryContext: Sendable {
     public let method: HTTPMethod
     /// The request's URL.
     public let url: String
-    /// The status of the attempt's response; `nil` when it failed before one arrived.
+    /// The status of the attempt's response. `nil` when it failed before one arrived.
     public let responseStatus: HTTPResponseStatus?
-    /// The headers of the attempt's response; `nil` when it failed before one arrived.
+    /// The headers of the attempt's response. `nil` when it failed before one arrived.
     public let responseHeaders: HTTPHeaders?
-    /// The error the attempt failed with; `nil` when it succeeded.
+    /// The error the attempt failed with. `nil` when it succeeded.
     public let error: NetSkeinError?
 }

@@ -36,7 +36,7 @@ public enum CachePolicy: Sendable, Equatable {
     /// This goes against what the server asked, so use it only for responses you know are safe
     /// to reuse, such as reference data from a backend that forbids caching everything.
     /// Responses stored this way are only used by requests with this policy,
-    /// ``returnCacheElseLoad`` or ``onlyIfCached``; ``default`` requests never see them.
+    /// ``returnCacheElseLoad`` or ``onlyIfCached``. ``default`` requests never see them.
     case fresh(for: TimeAmount)
 }
 

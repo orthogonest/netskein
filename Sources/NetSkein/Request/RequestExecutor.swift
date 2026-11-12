@@ -101,7 +101,7 @@ extension RequestExecutor {
     }
 
     /// Sends the request and returns the response once its headers arrive, with the body still
-    /// to be read; retries end there.
+    /// to be read. Retries end there.
     func openStream() async throws(NetSkeinError) -> HTTPClientResponse {
         try await run(OpenStreamOperation())
     }

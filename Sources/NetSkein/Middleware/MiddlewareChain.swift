@@ -4,7 +4,7 @@ import Foundation
 enum MiddlewareChain {
     /// Sends `head` through `middlewares` in order, ending at `transport`.
     ///
-    /// `transport` must only throw ``NetSkeinError``; that is what lets errors coming out of a
+    /// `transport` must only throw ``NetSkeinError``. That is what lets errors coming out of a
     /// middleware be told apart from errors it merely passed along from `next`.
     static func run(
         _ head: RequestHead,
@@ -31,7 +31,7 @@ enum MiddlewareChain {
                 throw error
             } catch {
                 // `next` only throws NetSkeinError, so anything else came from the middleware
-                // itself; keep it distinct from network failures so it is not retried as one
+                // itself. Keep it distinct from network failures so it is not retried as one
                 throw NetSkeinError.custom(
                     kind: .middlewareFailure,
                     message: "\(type(of: middleware)) failed: \(error.localizedDescription)",

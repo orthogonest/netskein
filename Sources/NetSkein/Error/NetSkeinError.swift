@@ -181,7 +181,7 @@ extension NetSkeinError: Hashable {
 }
 
 extension NetSkeinError: LocalizedError {
-    /// A readable description of what went wrong; the message for errors created with
+    /// A readable description of what went wrong. The message for errors created with
     /// ``custom(kind:message:underlyingError:)``.
     public var errorDescription: String? {
         switch representation {

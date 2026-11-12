@@ -10,10 +10,10 @@ import NIOHTTP1
 ///        request time · response time · forced flag
 /// ```
 ///
-/// Integers are big-endian; strings, bodies and header lists are prefixed with their length.
+/// Integers are big-endian. Strings, bodies and header lists are prefixed with their length.
 /// Times are stored as the bit pattern of their seconds since 1970.
 enum CacheFileCodec {
-    /// Changes whenever the format does; files with another version are discarded.
+    /// Changes whenever the format does. Files with another version are discarded.
     static let version: UInt8 = 1
 
     /// `"NSCF"` (NetSkein Cache File), so a file that is not a NetSkein cache file is never misread as one.

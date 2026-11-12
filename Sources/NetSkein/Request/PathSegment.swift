@@ -31,7 +31,7 @@ public struct PathSegment: ExpressibleByStringInterpolation, Sendable {
 
     /// Builds a ``PathSegment`` from a string literal, encoding each interpolated value.
     ///
-    /// The compiler uses this type when you write a literal with interpolation; you don't call it
+    /// The compiler uses this type when you write a literal with interpolation. You don't call it
     /// yourself.
     public struct StringInterpolation: StringInterpolationProtocol {
         var output: String = ""

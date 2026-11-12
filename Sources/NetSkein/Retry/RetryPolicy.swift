@@ -19,8 +19,9 @@ import NIOHTTP1
 /// - The server's `Retry-After` is longer than ``maxRetryAfter``.
 /// - The wait would end after the call's ``NetSkeinRequest/callTimeout(_:)``.
 /// - The caller has already received part of the response, such as a chunk from
-///   ``NetSkeinRequest/stream(_:)`` or
-///   ``NetSkeinRequest/download(toFileAtPath:resumption:onProgress:)``.
+///   ``NetSkeinRequest/stream(_:)``. Downloads are still retried, since
+///   ``NetSkeinRequest/download(toFileAtPath:resumption:onProgress:)`` rewrites or resumes the
+///   file.
 ///
 /// The call then returns, or throws, what the last attempt produced.
 ///

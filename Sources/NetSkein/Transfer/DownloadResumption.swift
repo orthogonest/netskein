@@ -1,19 +1,31 @@
-/// Strategy for handling partial download resumption.
+/// Whether ``NetSkeinRequest/download(toFileAtPath:resumption:onProgress:)`` continues a
+/// partial file instead of downloading it again from the start.
+///
+/// Resuming sends a `Range` header asking for the bytes after those on disk. It sends
+/// `If-Range` too when a strong validator is known, so that a server whose file has changed
+/// sends the whole new file instead of the rest of a different one. Only `GET` requests resume.
 public enum DownloadResumption: Equatable, Sendable {
-    /// Overwrites existing files and restarts from byte 0 on retries.
-    /// Safest default for general-purpose HTTP requests.
+    /// Never resumes: the file is replaced at the start of the download, and every retry writes
+    /// it again from the start.
     case disabled
 
-    /// If a network failure occurs during retries, automatically resumes from the
-    /// bytes already written using `Range` and `If-Range` (via captured `ETag`/`Last-Modified`).
-    /// Pre-existing files at the destination path before attempt 0 are overwritten.
+    /// Resumes on retries: a file already at the path is replaced, and when an attempt fails,
+    /// the next one continues from what it wrote.
+    ///
+    /// Retries send `If-Range` with the `ETag` or `Last-Modified` of the earlier response, when
+    /// it had a strong one.
     case onRetry
 
-    /// Attempts to resume an existing file already at the destination path (if present),
-    /// as well as handling retry resumption.
-    /// - Parameter validator: Optional known `ETag` or `Last-Modified` date to validate against.
-    ///   It must be strong: a weak `ETag` such as `W/"v1"` is ignored, because `If-Range` only
-    ///   accepts validators that guarantee identical bytes.
+    /// Resumes a file already at the path, as well as on retries.
+    ///
+    /// - Warning: Without a validator, the first attempt sends `Range` without `If-Range`. If
+    ///   the file on the server has changed since the partial file was written, the result
+    ///   mixes the two versions. Pass the `ETag` or `Last-Modified` you saved with the file.
+    ///
+    /// - Parameter validator: The `ETag` or `Last-Modified` of the partial file, sent as
+    ///   `If-Range` (default: `nil`, for none). It must be strong: a weak `ETag` such as
+    ///   `W/"v1"` is ignored, because `If-Range` only accepts validators that guarantee
+    ///   identical bytes.
     case ifPossible(validator: String? = nil)
 }
 

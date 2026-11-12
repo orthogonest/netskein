@@ -22,7 +22,7 @@ import NIOHTTP1
 /// - **Open**: requests fail at once with ``NetSkeinError/Kind/circuitOpen``, without being
 ///   sent, until `openDuration` has passed.
 /// - **Half-open**: up to `halfOpenMaxRequests` trial requests are sent. A success closes the
-///   circuit; a failure opens it again for another `openDuration`.
+///   circuit. A failure opens it again for another `openDuration`.
 ///
 /// The breaker counts every attempt, including retries, and judges each one by its response
 /// status or error, before the body is read. A cancelled request is not counted. The standard
@@ -59,7 +59,7 @@ public final class CircuitBreaker: Sendable {
     public enum State: Sendable, Equatable {
         /// Requests are sent.
         case closed
-        /// Requests are rejected until `until`; the first request after it is a trial.
+        /// Requests are rejected until `until`. The first request after it is a trial.
         case open(until: Date)
         /// Trial requests are being sent to find out whether the server has recovered.
         case halfOpen
@@ -70,9 +70,9 @@ public final class CircuitBreaker: Sendable {
     let halfOpenMaxRequests: Int
     let key: Key
     let isFailure: FailureEvaluator
-    /// The clock; tests replace it to move time forward.
+    /// The clock. Tests replace it to move time forward.
     let now: @Sendable () -> Date
-    /// The circuits that are not closed with zero failures; a missing key is a healthy circuit.
+    /// The circuits that are not closed with zero failures. A missing key is a healthy circuit.
     private let circuits: NIOLockedValueBox<[String: Circuit]>
 
     /// Creates a breaker that opens a circuit after `failureThreshold` failures in a row.
@@ -106,7 +106,7 @@ public final class CircuitBreaker: Sendable {
         )
     }
 
-    /// The full initializer, with the clock injected; `NetSkeinTesting` uses it for
+    /// The full initializer, with the clock injected. `NetSkeinTesting` uses it for
     /// `CircuitBreaker.testing(…)`.
     package init(
         failureThreshold: Int,
@@ -175,7 +175,7 @@ extension CircuitBreaker {
     /// makes it half-open.
     ///
     /// - Parameter key: The circuit's name, as returned by the breaker's `key`.
-    /// - Returns: The circuit's state; ``State/closed`` for a circuit with no requests yet.
+    /// - Returns: The circuit's state. ``State/closed`` for a circuit with no requests yet.
     public func state(for key: String) -> State {
         switch circuits.withLockedValue({ $0[key] }) {
         case nil, .closed: .closed
@@ -201,7 +201,7 @@ extension CircuitBreaker {
         let isTrial: Bool
     }
 
-    /// One circuit, as stored; closed with zero failures is stored as no entry.
+    /// One circuit, as stored. Closed with zero failures is stored as no entry.
     private enum Circuit {
         case closed(failures: Int)
         case open(until: Date)

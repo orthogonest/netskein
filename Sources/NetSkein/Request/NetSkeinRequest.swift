@@ -141,13 +141,13 @@ extension NetSkeinRequest where Body == BodyAllowed {
     ///   - client: The client that sends the request.
     ///   - method: The HTTP method.
     ///   - url: The full URL, including the scheme.
-    ///   - headers: The headers to send (default: `nil`); `nil` uses the client's default
+    ///   - headers: The headers to send (default: `nil`). `nil` uses the client's default
     ///     headers.
     ///   - maxResponseBytes: The largest response body ``send()`` accepts (default: 10 MiB).
     ///     See ``maxResponseBytes(_:)``.
     ///   - attemptTimeout: The limit for each attempt (default: 30 seconds). See
     ///     ``attemptTimeout(_:)``.
-    ///   - retryPolicy: How the request is retried (default: `nil`); `nil` uses the client's
+    ///   - retryPolicy: How the request is retried (default: `nil`). `nil` uses the client's
     ///     policy. See ``retry(_:)``.
     ///   - percentEncoder: Encodes ``form(_:)`` bodies (default: ``PercentEncoder/default``).
     public init(
@@ -242,9 +242,9 @@ extension NetSkeinRequest {
     /// Only ``send()`` holds the whole body, so only it is limited. ``stream()``,
     /// ``stream(_:)``, ``lines(maxLineLength:)`` and
     /// ``download(toFileAtPath:resumption:onProgress:)`` read the body piece by piece and have no
-    /// total limit; ``lines(maxLineLength:)`` limits each line instead.
+    /// total limit. ``lines(maxLineLength:)`` limits each line instead.
     ///
-    /// - Parameter bytes: The largest body accepted, in bytes; `nil` for no limit.
+    /// - Parameter bytes: The largest body accepted, in bytes. `nil` for no limit.
     /// - Returns: A copy of the request with the new limit.
     @discardableResult
     public func maxResponseBytes(_ bytes: Int?) -> Self {
@@ -259,15 +259,15 @@ extension NetSkeinRequest {
     /// ``NetSkeinError/Kind/timedOut``. Before waiting for a retry that would end after the limit,
     /// the call stops instead and returns or throws what the last attempt produced. For
     /// ``stream()`` and ``lines(maxLineLength:)``, which return once the headers arrive, the limit
-    /// ends there; iterating the body afterwards is not limited by it.
+    /// ends there. Iterating the body afterwards is not limited by it.
     ///
     /// `nil`, the default unless the client sets one, puts no limit on the call as a whole. Each
     /// attempt is still limited by ``attemptTimeout(_:)``, and each wait for body data by the
     /// client's read timeout, but retries and a slowly arriving body can make the total much
-    /// longer. Set it when the caller has a time budget; pass `nil` to remove the client's limit
+    /// longer. Set it when the caller has a time budget. Pass `nil` to remove the client's limit
     /// for this request.
     ///
-    /// - Parameter duration: The longest the whole call can take; `nil` for no limit.
+    /// - Parameter duration: The longest the whole call can take. `nil` for no limit.
     /// - Returns: A copy of the request with the new call timeout.
     @discardableResult
     public func callTimeout(_ duration: TimeAmount?) -> Self {
@@ -329,7 +329,7 @@ extension NetSkeinRequest {
         return copy
     }
 
-    /// Adds a middleware for this request only; it runs inside the client's middleware of the
+    /// Adds a middleware for this request only. It runs inside the client's middleware of the
     /// same scope, once per call or for every attempt. See ``MiddlewareScope``.
     ///
     /// - Parameters:
@@ -381,7 +381,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
     /// - Parameter fields: The form fields, by name. Names and values are percent-encoded for
     ///   you.
     /// - Returns: A copy of the request with the form as its body.
-    /// - Throws: Nothing at present; the method is declared `throws` to match ``json(_:)``.
+    /// - Throws: Nothing at present. The method is declared `throws` to match ``json(_:)``.
     @discardableResult
     public func form(
         _ fields: [String: String]
@@ -763,7 +763,7 @@ extension NetSkeinRequest {
     /// ```
     ///
     /// Failed attempts are retried as the retry policy says, and the response may come from the
-    /// client's ``HTTPCache``. The body is limited by ``maxResponseBytes(_:)``; to read a large
+    /// client's ``HTTPCache``. The body is limited by ``maxResponseBytes(_:)``. To read a large
     /// body without holding it in memory, use ``stream()`` or
     /// ``download(toFileAtPath:resumption:onProgress:)``.
     ///
@@ -820,7 +820,7 @@ extension NetSkeinRequest {
     /// reading the body is thrown from the loop and never retried.
     ///
     /// The response is not cached, and the request's span ends when the headers arrive. The
-    /// body has no size limit; see ``maxResponseBytes(_:)``.
+    /// body has no size limit. See ``maxResponseBytes(_:)``.
     ///
     /// - Returns: The response, with its body still to be read.
     /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, or the
@@ -842,7 +842,7 @@ extension NetSkeinRequest {
     /// body without line endings arrives as a single line once it ends. See ``NetSkeinLines`` for
     /// how lines are split, and ``stream()`` for retries, caching and tracing, which work the same.
     ///
-    /// - Parameter maxLineLength: The longest line accepted, in bytes (default: 1 MiB); a longer
+    /// - Parameter maxLineLength: The longest line accepted, in bytes (default: 1 MiB). A longer
     ///   one makes the loop throw `invalidPayload`, so a server cannot make one endless line use
     ///   unbounded memory. `nil` removes the limit, so a line is held in memory however long it
     ///   gets.
@@ -855,6 +855,46 @@ extension NetSkeinRequest {
         try await stream().lines(maxLineLength: maxLineLength)
     }
 
+    /// Sends the request and writes the body of a successful response to the file at `path`,
+    /// without holding it in memory.
+    ///
+    /// ```swift
+    /// try await client.get("https://example.com/video.mp4")
+    ///     .download(toFileAtPath: path, resumption: .onRetry) { written, total in
+    ///         print("\(written) of \(total.map(String.init) ?? "?") bytes")
+    ///     }
+    /// ```
+    ///
+    /// The file is created, or replaced when it already exists, unless `resumption` is
+    /// ``DownloadResumption/ifPossible(validator:)``. A download that fails leaves what it wrote
+    /// on disk. Delete the file yourself if you don't want to resume it later.
+    ///
+    /// ## Retries and Resuming
+    ///
+    /// Unlike ``stream(_:)``, a download is retried even after part of the body was written,
+    /// since each attempt either writes the file from the start or resumes it:
+    ///
+    /// - With ``DownloadResumption/disabled``, every attempt writes the file from the start.
+    /// - Otherwise, an attempt that finds part of the file on disk asks for the rest with a
+    ///   `Range` header, and `If-Range` when a strong validator is known. A `206 Partial Content`
+    ///   response is appended to the file. A `200 OK` means the server sent the whole body,
+    ///   which replaces the file.
+    /// - A `416 Range Not Satisfiable` empties the file and throws
+    ///   ``NetSkeinError/badStatus(_:)``, so the next download starts over.
+    ///
+    /// Only `GET` requests resume. Other methods always write the file from the start. Downloads
+    /// are never cached.
+    ///
+    /// - Parameters:
+    ///   - path: Where to write the body.
+    ///   - resumption: Whether to resume a partial file (default: ``DownloadResumption/disabled``).
+    ///   - onProgress: Called after each chunk is written, with the bytes in the file so far and
+    ///     the expected total (default: `nil`). The total is `nil` when the server doesn't send
+    ///     one. When resuming, both include the bytes already on disk.
+    /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`. A
+    ///   ``NetSkeinError`` of kind ``NetSkeinError/Kind/ioFailure`` when the file can't be created
+    ///   or written, or of kind ``NetSkeinError/Kind/networkFailure`` when the connection drops,
+    ///   once the retry policy gives up.
     public func download(
         toFileAtPath path: String,
         resumption: DownloadResumption = .disabled,

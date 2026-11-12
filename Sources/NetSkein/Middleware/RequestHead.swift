@@ -2,7 +2,7 @@ import NIOHTTP1
 
 /// The parts of an outgoing request that middleware can change.
 ///
-/// The body is managed by NetSkein so it can be re-sent safely; middleware can inspect it
+/// The body is managed by NetSkein so it can be re-sent safely. Middleware can inspect it
 /// through ``MiddlewareContext/body``.
 public struct RequestHead: Sendable {
     public var method: HTTPMethod

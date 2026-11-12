@@ -24,7 +24,7 @@ struct HTTPValidator {
 }
 
 extension HTTPValidator {
-    /// The headers asking whether this version is still current; the server answers
+    /// The headers asking whether this version is still current. The server answers
     /// `304 Not Modified` when it is (RFC 9110 §13.1.2, §13.1.3).
     var conditionalHeaders: HTTPHeaders {
         var headers = HTTPHeaders()
@@ -52,8 +52,8 @@ extension HTTPValidator {
 
     /// Whether `other`, such as the validators of a `304 Not Modified`, refers to the same version.
     ///
-    /// Entity tags use the weak comparison, which ignores the `W/` prefix (RFC 9110 §8.8.3.2);
-    /// without one, `Last-Modified` must be equal. Without either, nothing contradicts a match
+    /// Entity tags use the weak comparison, which ignores the `W/` prefix (RFC 9110 §8.8.3.2).
+    /// Without one, `Last-Modified` must be equal. Without either, nothing contradicts a match
     /// (RFC 9111 §4.3.4).
     func matches(_ other: HTTPValidator) -> Bool {
         if let otherTag = other.entityTag {

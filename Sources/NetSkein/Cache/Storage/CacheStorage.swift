@@ -1,6 +1,6 @@
 /// Where an ``HTTPCache`` keeps its responses.
 ///
-/// A storage only keeps and evicts entries; ``HTTPCache`` applies every RFC 9111 rule, so a
+/// A storage only keeps and evicts entries. ``HTTPCache`` applies every RFC 9111 rule, so a
 /// custom storage needs no HTTP knowledge. Entries are grouped by URL: one URL can have
 /// several entries when the server's `Vary` header makes responses depend on request headers.
 public protocol CacheStorage: Sendable {

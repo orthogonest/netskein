@@ -18,7 +18,7 @@ import NIOHTTP1
 /// ```
 ///
 /// A stub answers `200 OK` with no body until told otherwise. Several stubs for the same route
-/// answer successive calls in order; see ``MockHTTPClient``.
+/// answer successive calls in order. see ``MockHTTPClient``.
 public struct HTTPStub: Sendable {
     /// What a matching request gets back.
     public enum Outcome: Sendable {
@@ -34,7 +34,7 @@ public struct HTTPStub: Sendable {
     public let urlMatcher: @Sendable (String) -> Bool
     /// How long to wait before answering, to simulate a slow server.
     public private(set) var delay: TimeAmount?
-    /// Runs for every matching request before it is answered; throw from it to fail the request,
+    /// Runs for every matching request before it is answered. Throw from it to fail the request,
     /// or use test expectations inside it to check what was sent.
     public private(set) var requestValidator: Validator?
     public private(set) var outcome: Outcome
@@ -167,7 +167,7 @@ extension HTTPStub {
         return copy
     }
 
-    /// Runs `validator` for every matching request before it is answered; throw from it to fail
+    /// Runs `validator` for every matching request before it is answered. Throw from it to fail
     /// the request, or use test expectations inside it to check what was sent.
     public func validate(_ validator: @escaping Validator) -> Self {
         var copy = self
@@ -183,7 +183,7 @@ extension HTTPStub {
         var body: ByteBuffer?
     }
 
-    /// A copy with the response changed by `change`; a failing stub keeps failing.
+    /// A copy with the response changed by `change`. A failing stub keeps failing.
     private func updatingResponse(_ change: (inout Response) -> Void) -> Self {
         guard case let .response(status, headers, body) = outcome else { return self }
         var response = Response(status: status, headers: headers, body: body)

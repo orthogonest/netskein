@@ -62,7 +62,10 @@ extension FileChunkSequence: AsyncSequence {
         let fileSize: Int64
         let onProgress: UploadProgress?
 
+        /// Bytes the transport has accepted, reported to `onProgress`.
         private var sentBytes: Int64 = 0
+
+        /// The size of the chunk last returned, counted as sent once the next one is asked for.
         private var pendingBytes: Int64 = 0
 
         init(
