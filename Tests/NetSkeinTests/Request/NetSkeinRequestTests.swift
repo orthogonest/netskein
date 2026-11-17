@@ -283,16 +283,16 @@ extension NetSkeinRequestTests {
         #expect(isJsonValidated.withLockedValue { $0 } == true)
     }
 
-    @Test("NetSkeinRequestTests: Verifies json throws invalidPayload error when encoding fails")
+    @Test("NetSkeinRequestTests: Verifies json throws invalidRequest error when encoding fails")
     func testJsonBodyTransitionFailure() {
         let client = NetSkeinClient.testing().build()
 
         do {
             // JSON has no NaN, so the default JSONEncoder can't encode it
             _ = try client.post("https://api.example.com/users").json(["score": Double.nan])
-            Issue.record("Expected json() to throw invalidPayload")
+            Issue.record("Expected json() to throw invalidRequest")
         } catch {
-            #expect(error.kind == .invalidPayload)
+            #expect(error.kind == .invalidRequest)
             #expect(error.errorDescription?.hasPrefix("Failed to encode JSON request") == true)
             #expect(error.failureReason != nil)
         }

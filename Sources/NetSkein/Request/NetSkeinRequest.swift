@@ -421,7 +421,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
     /// It's encoded with a default `JSONEncoder`, so dates, keys and other values use its
     /// default strategies.
     ///
-    /// - Throws: ``NetSkeinError/Kind/invalidPayload`` when `bodyObject` can't be encoded.
+    /// - Throws: ``NetSkeinError/Kind/invalidRequest`` when `bodyObject` can't be encoded.
     /// - Parameter bodyObject: The value to send, such as a `Codable` struct.
     /// - Returns: A copy of the request with the JSON as its body.
     @discardableResult
@@ -455,7 +455,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
             )
         } catch {
             throw .custom(
-                kind: .invalidPayload,
+                kind: .invalidRequest,
                 message: "Failed to encode JSON request:\(error.localizedDescription)",
                 underlyingError: error
             )

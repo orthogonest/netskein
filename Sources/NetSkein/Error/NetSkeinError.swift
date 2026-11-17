@@ -54,8 +54,8 @@ public struct NetSkeinError: Error, Sendable {
         /// The standard retry policy retries it.
         case networkFailure
 
-        /// A body couldn't be encoded or decoded, such as a response that isn't the JSON you
-        /// expected, or a response body larger than ``NetSkeinRequest/maxResponseBytes(_:)``.
+        /// A response body couldn't be used, such as one that isn't the JSON you expected, or
+        /// one larger than ``NetSkeinRequest/maxResponseBytes(_:)``.
         case invalidPayload
 
         /// The server answered with a `4xx` status, reported by ``NetSkeinResponse/validate()``.
@@ -84,8 +84,9 @@ public struct NetSkeinError: Error, Sendable {
         case notPermitted
 
         /// The request was refused before it was sent, because it can't be sent as built, such
-        /// as a URL without a scheme or host. Retrying won't help: the request has to change.
-        /// The transport's error is kept as the underlying error.
+        /// as a URL without a scheme or host, or a ``NetSkeinRequest/json(_:)`` body that can't
+        /// be encoded. Retrying won't help: the request has to change. The error that caused it
+        /// is kept as the underlying error.
         case invalidRequest
 
         /// The call did not finish within its ``NetSkeinRequest/callTimeout(_:)`` and was
