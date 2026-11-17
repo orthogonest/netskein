@@ -65,6 +65,44 @@ extension NetSkeinRequestTests {
         #expect(res2.status == .ok)
     }
 
+    @Test(
+        "NetSkeinRequestTests: path(_:) adds to the path, before any query or fragment",
+        arguments: [
+            ("https://api.example.com/users?page=2", "https://api.example.com/users/42?page=2"),
+            ("https://api.example.com/users/?page=2", "https://api.example.com/users/42?page=2"),
+            ("https://api.example.com?page=2", "https://api.example.com/42?page=2"),
+            ("https://api.example.com/users#top", "https://api.example.com/users/42#top"),
+            (
+                "https://api.example.com/users?q=a/b#top",
+                "https://api.example.com/users/42?q=a/b#top"
+            ),
+        ]
+    )
+    func testPathKeepsQueryAndFragment(url: String, expected: String) async throws {
+        let client = NetSkeinClient.testing()
+            .addStub(HTTPStub.request(.GET) { _ in true })
+            .build()
+
+        _ = try await client.get(url).path("42").send()
+
+        #expect(client.mock?.requests.first?.url == expected)
+    }
+
+    @Test("NetSkeinRequestTests: path(_:) after query(_:) keeps the query at the end")
+    func testPathAfterQuery() async throws {
+        let client = NetSkeinClient.testing()
+            .addStub(HTTPStub.request(.GET) { _ in true })
+            .build()
+
+        _ = try await client.get("https://api.example.com")
+            .path("users")
+            .query(["page": "2"])
+            .path("42")
+            .send()
+
+        #expect(client.mock?.requests.first?.url == "https://api.example.com/users/42?page=2")
+    }
+
     @Test("NetSkeinRequestTests: Verifies header adds and replaces headers correctly")
     func testHeaderModifier() async throws {
         let isHeaderValidated = NIOLockedValueBox(false)

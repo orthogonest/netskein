@@ -185,17 +185,20 @@ extension NetSkeinRequest {
     ///     .path("users/\(username)")  // "a/b" becomes "a%2Fb"
     /// ```
     ///
-    /// See ``PathSegment`` for which values are encoded. Call ``path(_:)`` before ``query(_:)``:
-    /// the URL is treated as text, so a segment added after a query lands inside it.
+    /// See ``PathSegment`` for which values are encoded. The segment goes before any query or
+    /// fragment, so ``path(_:)`` and ``query(_:)`` can be called in any order.
     ///
     /// - Parameter segment: The path to append, such as `"users/\(id)"`.
     /// - Returns: A copy of the request with the longer path.
     @discardableResult
     public func path(_ segment: PathSegment) -> Self {
-        var copy = self
-        let currentURL = copy.url.trimmingCharacters(in: ["/"])
+        // A path can't contain `?` or `#`, so the first one starts the query or fragment
+        let pathEnd = url.firstIndex { $0 == "?" || $0 == "#" } ?? url.endIndex
+        let currentPath = url[..<pathEnd].trimmingCharacters(in: ["/"])
         let newSegment = segment.value.trimmingCharacters(in: ["/"])
-        copy.url = "\(currentURL)/\(newSegment)"
+
+        var copy = self
+        copy.url = "\(currentPath)/\(newSegment)\(url[pathEnd...])"
         return copy
     }
 
