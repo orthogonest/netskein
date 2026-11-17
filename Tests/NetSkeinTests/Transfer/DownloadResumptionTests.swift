@@ -9,7 +9,6 @@ struct DownloadResumptionTests {
         // Same cases equality
         #expect(DownloadResumption.disabled == DownloadResumption.disabled)
         #expect(DownloadResumption.onRetry == DownloadResumption.onRetry)
-        #expect(DownloadResumption.ifPossible() == DownloadResumption.ifPossible(validator: nil))
         #expect(
             DownloadResumption.ifPossible(validator: "etag-123")
                 == DownloadResumption.ifPossible(validator: "etag-123")
@@ -17,8 +16,8 @@ struct DownloadResumptionTests {
 
         // Different cases inequality
         #expect(DownloadResumption.disabled != DownloadResumption.onRetry)
-        #expect(DownloadResumption.disabled != DownloadResumption.ifPossible())
-        #expect(DownloadResumption.onRetry != DownloadResumption.ifPossible())
+        #expect(DownloadResumption.disabled != DownloadResumption.ifPossible(validator: nil))
+        #expect(DownloadResumption.onRetry != DownloadResumption.ifPossible(validator: nil))
         #expect(
             DownloadResumption.ifPossible(validator: "etag-123")
                 != DownloadResumption.ifPossible(validator: "etag-456")
@@ -42,7 +41,7 @@ struct DownloadResumptionTests {
         #expect(onRetryStrategy.ifRangeValidator == nil)
 
         // ifPossible without validator returns nil
-        let ifPossibleNil = DownloadResumption.ifPossible()
+        let ifPossibleNil = DownloadResumption.ifPossible(validator: nil)
         #expect(ifPossibleNil.ifRangeValidator == nil)
 
         // ifPossible with validator returns the exact validator string

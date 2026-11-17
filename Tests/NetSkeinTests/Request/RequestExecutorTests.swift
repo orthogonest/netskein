@@ -491,6 +491,42 @@ extension RequestExecutorTests {
     }
 
     @Test(
+        "RequestExecutorTests: Verifies resuming without a validator logs a warning",
+        arguments: [(nil, true), ("\"etag\"", false), ("W/\"weak\"", true)] as [(String?, Bool)]
+    )
+    func testDownloadResumptionWarnsWithoutValidator(validator: String?, warns: Bool) async throws {
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_resume_warn_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+        try Data("0123456789".utf8).write(to: destURL)
+
+        let records = NIOLockedValueBox<[(Logger.Level, String)]>([])
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/file.bin",
+            outcome: .response(
+                status: .partialContent,
+                headers: ["Content-Range": "bytes 10-14/15"],
+                body: ByteBuffer(string: "ABCDE")
+            )
+        )
+        let client = NetSkeinClient.testing()
+            .logger(Logger(label: "test") { _ in CapturingLogHandler(records: records) })
+            .addStub(stub)
+            .build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/file.bin")
+
+        try await executor.download(
+            to: destURL.path,
+            resumption: .ifPossible(validator: validator)
+        )
+
+        let warnings = records.withLockedValue { $0 }
+            .filter { $0.0 == .warning && $0.1.contains("without a validator") }
+        #expect(warnings.count == (warns ? 1 : 0))
+    }
+
+    @Test(
         "RequestExecutorTests: Verifies download resumption resets and overwrites when server returns 200 OK"
     )
     func testDownloadExecutionResumptionFallbackTo200OK() async throws {
@@ -549,7 +585,7 @@ extension RequestExecutorTests {
         await #expect(throws: NetSkeinError.self) {
             try await executor.download(
                 to: destURL.path,
-                resumption: .ifPossible()
+                resumption: .ifPossible(validator: nil)
             )
         }
 
@@ -665,7 +701,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.download(to: destURL.path, resumption: .ifPossible())
+            try await executor.download(to: destURL.path, resumption: .ifPossible(validator: nil))
             Issue.record(
                 "Expected download to throw .ioFailure when opening read-only file for append"
             )
@@ -753,7 +789,7 @@ extension RequestExecutorTests {
         let executor = makeExecutor(client: client, url: "https://api.example.com/drop")
 
         await #expect(throws: NetSkeinError.self) {
-            try await executor.download(to: destURL.path, resumption: .ifPossible())
+            try await executor.download(to: destURL.path, resumption: .ifPossible(validator: nil))
         }
 
         #expect(try String(contentsOf: destURL, encoding: .utf8) == "PART")
@@ -901,7 +937,7 @@ extension RequestExecutorTests {
 
         try await executor.download(
             to: destURL.path,
-            resumption: .ifPossible(),
+            resumption: .ifPossible(validator: nil),
             onProgress: { _, total in
                 reportedTotal.withLockedValue { $0 = total }
             }
@@ -992,7 +1028,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.download(to: fifo.path, resumption: .ifPossible())
+            try await executor.download(to: fifo.path, resumption: .ifPossible(validator: nil))
             Issue.record("Expected download to throw .ioFailure when the target cannot be seeked")
         } catch {
             #expect(error.kind == .ioFailure)

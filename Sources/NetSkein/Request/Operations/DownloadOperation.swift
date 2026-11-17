@@ -215,13 +215,19 @@ extension DownloadOperation: RequestOperation {
         }
 
         var headers: HTTPHeaders = ["Range": "bytes=\(existingBytes)-"]
+        var warning: String?
         if let validator {
             headers.add(name: "If-Range", value: validator)
+        } else {
+            warning =
+                "Resuming download from byte \(existingBytes) without a validator. "
+                + "If the file changed on the server, the result will mix two versions."
         }
 
         return AttemptSetup(
             description: "download resumption from byte \(existingBytes)",
-            extraHeaders: headers
+            extraHeaders: headers,
+            warning: warning
         )
     }
 

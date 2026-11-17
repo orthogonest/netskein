@@ -227,7 +227,8 @@ extension CurlLoggingMiddlewareTests {
     }
 }
 
-private struct CapturingLogHandler: LogHandler {
+/// Records every log line, for tests that check what was logged.
+struct CapturingLogHandler: LogHandler {
     let records: NIOLockedValueBox<[(Logger.Level, String)]>
     var metadata: Logger.Metadata = [:]
     var logLevel: Logger.Level = .trace

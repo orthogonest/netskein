@@ -29,6 +29,9 @@ struct AttemptStage: Sendable {
     ) async -> AttemptOutcome<Operation.Output> {
         let setup = operation.prepareAttempt()
         let context = beginAttempt(number, at: head, description: setup.description)
+        if let warning = setup.warning {
+            context.logger.warning("\(warning)")
+        }
         let attemptHead = prepareRequest(head, extraHeaders: setup.extraHeaders)
 
         let startTime = DispatchTime.now()

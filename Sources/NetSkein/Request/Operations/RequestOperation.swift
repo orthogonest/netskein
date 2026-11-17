@@ -36,8 +36,12 @@ protocol RequestOperation: Sendable {
     func response(for output: Output) -> HTTPClientResponse
 }
 
-/// How one attempt is described in logs, and any headers it adds to the request.
+/// What an operation needs for one attempt: how it is logged, and any headers it adds.
 struct AttemptSetup {
+    /// Names the attempt in logs, after "Initiating" or "Retrying", such as `file download`.
     var description: String
+    /// Added to the request for this attempt only, such as `Range` when resuming a download.
     var extraHeaders: HTTPHeaders = [:]
+    /// Logged as a warning when the attempt starts, for a risk the caller should know about.
+    var warning: String?
 }
