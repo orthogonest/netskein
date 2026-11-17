@@ -169,12 +169,22 @@ extension Logger {
 }
 
 extension MiddlewareContext {
-    /// `error` as a ``NetSkeinError``: unchanged when it already is one, otherwise logged and
-    /// reported as a network failure of `action`.
+    /// `error` as a ``NetSkeinError``: unchanged when it already is one, an invalid request when
+    /// AsyncHTTPClient refused the URL, otherwise logged and reported as a network failure of
+    /// `action`.
     func netSkeinError(from error: any Error, action: String) -> NetSkeinError {
         if let netSkeinError = error as? NetSkeinError {
             return netSkeinError
         }
+
+        if let clientError = error as? HTTPClientError, clientError.isInvalidURL {
+            return .custom(
+                kind: .invalidRequest,
+                message: "\(action) was not sent: \(clientError.localizedDescription)",
+                underlyingError: clientError
+            )
+        }
+
         logger.error(
             "\(action) failed",
             metadata: [
@@ -182,10 +192,22 @@ extension MiddlewareContext {
                 "error_description": .string(error.localizedDescription),
             ]
         )
+
         return .custom(
             kind: .networkFailure,
             message: "\(action) execution failed: \(error.localizedDescription)",
             underlyingError: error
         )
+    }
+}
+
+extension HTTPClientError {
+    /// Whether AsyncHTTPClient refused the request's URL before sending anything.
+    fileprivate var isInvalidURL: Bool {
+        let refusals: [HTTPClientError] = [
+            .invalidURL, .emptyScheme, .emptyHost, .missingSocketPath,
+        ]
+        // The scheme is part of the error, so only its short description can be matched
+        return refusals.contains(self) || shortDescription == "Unsupported scheme"
     }
 }

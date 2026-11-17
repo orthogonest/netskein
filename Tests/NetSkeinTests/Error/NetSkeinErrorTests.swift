@@ -167,6 +167,18 @@ extension NetSkeinErrorTests {
 }
 
 extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies invalidRequest has its own default descriptions")
+    func testInvalidRequestLocalization() {
+        let error = NetSkeinError.simple(.invalidRequest)
+
+        #expect(
+            error.errorDescription == "The request was not sent because it can't be sent as built."
+        )
+        #expect(error.failureReason?.contains("such as a URL without a scheme") == true)
+    }
+}
+
+extension NetSkeinErrorTests {
     @Test("NetSkeinErrorTests: Verifies timedOut has its own default descriptions")
     func testTimedOutLocalization() {
         let error = NetSkeinError.simple(.timedOut)

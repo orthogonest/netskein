@@ -17,8 +17,10 @@ public protocol HTTPTransport: Sendable {
     ///   - timeout: How long to wait for the response headers.
     ///   - logger: The logger for this request, tagged with its request ID.
     /// - Returns: The response, with its body still to be read.
-    /// - Throws: Any error when no response arrives. Errors other than ``NetSkeinError`` are
-    ///   reported to the caller as ``NetSkeinError/Kind/networkFailure``.
+    /// - Throws: Any error when no response arrives. AsyncHTTPClient's errors for a URL it can't
+    ///   send, such as `HTTPClientError.emptyScheme`, are reported to the caller as
+    ///   ``NetSkeinError/Kind/invalidRequest``. Other errors that aren't a ``NetSkeinError`` are
+    ///   reported as ``NetSkeinError/Kind/networkFailure``.
     func execute(
         _ request: HTTPClientRequest,
         timeout: TimeAmount,

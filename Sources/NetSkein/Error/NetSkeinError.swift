@@ -80,6 +80,11 @@ public struct NetSkeinError: Error, Sendable {
         /// failing. Not retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
         case circuitOpen
 
+        /// The request was refused before it was sent, because it can't be sent as built, such
+        /// as a URL without a scheme or host. Retrying won't help: the request has to change.
+        /// The transport's error is kept as the underlying error.
+        case invalidRequest
+
         /// The call did not finish within its ``NetSkeinRequest/callTimeout(_:)`` and was
         /// cancelled.
         case timedOut
@@ -205,6 +210,8 @@ extension NetSkeinError: LocalizedError {
                 return "A middleware failed while handling the request."
             case .circuitOpen:
                 return "The request was not sent because the server's circuit breaker is open."
+            case .invalidRequest:
+                return "The request was not sent because it can't be sent as built."
             case .timedOut:
                 return "The call did not finish within its time limit."
             }
@@ -242,6 +249,9 @@ extension NetSkeinError: LocalizedError {
             case .circuitOpen:
                 return
                     "The server failed repeatedly, so requests to it are rejected for a while to let it recover."
+            case .invalidRequest:
+                return
+                    "The request is malformed, such as a URL without a scheme or host, and must be changed before it can be sent."
             case .timedOut:
                 return
                     "The attempts, the waits between them, and reading the response together took longer than the call's time limit."
