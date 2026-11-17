@@ -131,25 +131,34 @@ public final class CircuitBreaker: Sendable {
 extension CircuitBreaker {
     /// The request's origin, its scheme, host and port, such as `https://api.example.com:8443`.
     ///
-    /// The scheme and host are lowercased. The port is included only when the URL has one, so
-    /// `https://example.com` and `https://example.com:443` are different circuits.
+    /// The scheme and host are lowercased. The port is included only when the URL has one
+    /// other than the scheme's default, so `https://example.com` and `https://example.com:443`
+    /// share a circuit.
     ///
     /// - Parameter request: The request to name the circuit of.
-    /// - Returns: The origin, or the whole URL when it has no host.
+    /// - Returns: The origin, or the whole URL when it has no scheme or no host.
     public static func origin(of request: RequestHead) -> String {
         guard
             let components = URLComponents(string: request.url),
+            let scheme = components.scheme?.lowercased(),
             let host = components.host
         else { return request.url }
 
-        let scheme = components.scheme ?? ""
-
-        var origin = "\(scheme.lowercased())://\(host.lowercased())"
-        if let port = components.port {
+        var origin = "\(scheme)://\(host.lowercased())"
+        if let port = components.port, port != Self.defaultPort(of: scheme) {
             origin += ":\(port)"
         }
 
         return origin
+    }
+
+    /// The port a URL with `scheme` uses when it names none: 80 for `http`, 443 for `https`.
+    private static func defaultPort(of scheme: String) -> Int? {
+        switch scheme {
+        case "http": 80
+        case "https": 443
+        default: nil
+        }
     }
 
     /// Whether the server failed: a network failure, or `500`, `502`, `503` or `504`.
