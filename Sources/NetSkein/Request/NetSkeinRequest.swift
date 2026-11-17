@@ -456,7 +456,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
         } catch {
             throw .custom(
                 kind: .invalidPayload,
-                message: "Failed to decode JSON request: \(error.localizedDescription)",
+                message: "Failed to encode JSON request:\(error.localizedDescription)",
                 underlyingError: error
             )
         }

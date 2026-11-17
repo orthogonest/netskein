@@ -285,26 +285,16 @@ extension NetSkeinRequestTests {
 
     @Test("NetSkeinRequestTests: Verifies json throws invalidPayload error when encoding fails")
     func testJsonBodyTransitionFailure() {
-        struct FailingModel: Encodable {
-            func encode(to encoder: Encoder) throws {
-                throw DecodingError.dataCorrupted(
-                    .init(codingPath: [], debugDescription: "Simulated encoding error")
-                )
-            }
-        }
-
         let client = NetSkeinClient.testing().build()
 
-        #expect(throws: NetSkeinError.self) {
-            try client.post("https://api.example.com/users")
-                .json(FailingModel())
-        }
-
         do {
-            _ = try client.post("https://api.example.com/users").json(FailingModel())
+            // JSON has no NaN, so the default JSONEncoder can't encode it
+            _ = try client.post("https://api.example.com/users").json(["score": Double.nan])
             Issue.record("Expected json() to throw invalidPayload")
         } catch {
             #expect(error.kind == .invalidPayload)
+            #expect(error.errorDescription?.hasPrefix("Failed to encode JSON request") == true)
+            #expect(error.failureReason != nil)
         }
     }
 
