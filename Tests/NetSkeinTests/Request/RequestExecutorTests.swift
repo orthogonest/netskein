@@ -703,6 +703,62 @@ extension RequestExecutorTests {
         #expect(resultData == "NEW")
     }
 
+    @Test(
+        "RequestExecutorTests: a failed download removes its partial file unless it can resume it",
+        arguments: [DownloadResumption.disabled, .onRetry]
+    )
+    func testFailedDownloadRemovesPartialFile(resumption: DownloadResumption) async throws {
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_failed_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let (client, _) = makeDroppingClient()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/drop")
+
+        await #expect(throws: NetSkeinError.self) {
+            try await executor.download(to: destURL.path, resumption: resumption)
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: destURL.path))
+    }
+
+    @Test("RequestExecutorTests: a download to a directory fails without deleting the directory")
+    func testFailedDownloadKeepsDirectory() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_directory_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let inside = directory.appendingPathComponent("keep.txt")
+        try Data("KEEP".utf8).write(to: inside)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let client = NetSkeinClient.testing()
+            .addStub(HTTPStub.get("https://api.example.com/file").text("BODY"))
+            .build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/file")
+
+        await #expect(throws: NetSkeinError.self) {
+            try await executor.download(to: directory.path)
+        }
+
+        #expect(try String(contentsOf: inside, encoding: .utf8) == "KEEP")
+    }
+
+    @Test("RequestExecutorTests: a failed download keeps its partial file to resume later")
+    func testFailedDownloadKeepsResumableFile() async throws {
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_failed_resumable_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let (client, _) = makeDroppingClient()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/drop")
+
+        await #expect(throws: NetSkeinError.self) {
+            try await executor.download(to: destURL.path, resumption: .ifPossible())
+        }
+
+        #expect(try String(contentsOf: destURL, encoding: .utf8) == "PART")
+    }
+
     @Test("RequestExecutorTests: Verifies Last-Modified header is captured when ETag is absent")
     func testDownloadCapturesLastModified() async throws {
         let tempDir = FileManager.default.temporaryDirectory
@@ -1352,6 +1408,20 @@ extension RequestExecutorTests {
             callMiddlewares: callMiddlewares,
             attemptMiddlewares: attemptMiddlewares
         )
+    }
+
+    /// A client whose only response sends `PART`, then drops the connection.
+    private func makeDroppingClient() -> (NetSkeinClient, ChunkedTransport) {
+        let transport = ChunkedTransport([
+            .chunks([ByteBuffer(string: "PART")], failure: MockStubOutageError())
+        ])
+        let client = NetSkeinClient(
+            transport: transport,
+            retryPolicy: .disabled,
+            tracer: nil,
+            logger: Logger(label: LoggerLabel.test)
+        )
+        return (client, transport)
     }
 
     /// Creates a named pipe with a non-blocking reader attached, so writers can open it without blocking.

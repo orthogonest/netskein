@@ -118,7 +118,12 @@ extension RequestExecutor {
             onProgress: onProgress
         )
         operation.discardStaleFile()
-        try await run(operation)
+        do {
+            try await run(operation)
+        } catch {
+            operation.discardFailedFile()
+            throw error
+        }
     }
 }
 

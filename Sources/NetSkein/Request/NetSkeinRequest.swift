@@ -866,8 +866,9 @@ extension NetSkeinRequest {
     /// ```
     ///
     /// The file is created, or replaced when it already exists, unless `resumption` is
-    /// ``DownloadResumption/ifPossible(validator:)``. A download that fails leaves what it wrote
-    /// on disk. Delete the file yourself if you don't want to resume it later.
+    /// ``DownloadResumption/ifPossible(validator:)``. A download that fails deletes the file,
+    /// except with ``DownloadResumption/ifPossible(validator:)``, which keeps what it wrote so
+    /// a later download can resume it. Delete it yourself if you won't.
     ///
     /// ## Retries and Resuming
     ///

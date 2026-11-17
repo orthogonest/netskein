@@ -47,6 +47,21 @@ extension DownloadOperation {
         FileManager.default.createFile(atPath: path, contents: nil)
     }
 
+    /// Removes the file after the call failed, unless a later download can resume it. Without
+    /// ``DownloadResumption/ifPossible(validator:)``, the next download replaces it anyway.
+    func discardFailedFile() {
+        if case .ifPossible = resumption { return }
+
+        // Only a regular file can be this download's. A directory at `path` made the download
+        // fail, and must not be deleted with it
+        guard
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+            attributes[.type] as? FileAttributeType == .typeRegular
+        else { return }
+
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
     private func resumableFileSize() -> Int64 {
         guard
             resumption != .disabled,
