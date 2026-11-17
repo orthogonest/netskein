@@ -10,6 +10,12 @@ import NIOHTTP1
 /// the headers added by the middleware before it. Values of `redactedHeaders` are masked, and
 /// in-memory bodies longer than `maxBodyBytes` are truncated. The response is passed through
 /// unchanged.
+///
+/// ```swift
+/// let client = NetSkeinClient.builder()
+///     .using(CurlLoggingMiddleware(format: .multiline))
+///     .build()
+/// ```
 public struct CurlLoggingMiddleware {
     /// How the logged command is laid out.
     public enum Format: Sendable {
@@ -24,6 +30,16 @@ public struct CurlLoggingMiddleware {
     private let redactedHeaders: Set<String>
     private let maxBodyBytes: Int
 
+    /// Creates a middleware that logs each request as a `curl` command.
+    ///
+    /// - Parameters:
+    ///   - level: The level the command is logged at (default: `debug`).
+    ///   - format: How the command is laid out (default: ``Format/singleLine``).
+    ///   - redactedHeaders: Headers whose values are replaced with `<redacted>`
+    ///     (default: `Authorization`, `Cookie` and `Proxy-Authorization`). Names are
+    ///     case-insensitive.
+    ///   - maxBodyBytes: The most bytes of an in-memory body shown (default: 1 KiB). Longer
+    ///     bodies are truncated. Values below 0 count as 0.
     public init(
         level: Logger.Level = .debug,
         format: Format = .singleLine,
@@ -38,6 +54,14 @@ public struct CurlLoggingMiddleware {
 }
 
 extension CurlLoggingMiddleware: HTTPMiddleware {
+    /// Logs `request` as a `curl` command, then sends it on unchanged.
+    ///
+    /// - Parameters:
+    ///   - request: The request to log.
+    ///   - context: Provides the logger and the body.
+    ///   - next: Sends the request to the rest of the chain.
+    /// - Returns: The response, unchanged.
+    /// - Throws: Whatever `next` throws.
     public func intercept(
         _ request: RequestHead,
         context: MiddlewareContext,

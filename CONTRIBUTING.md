@@ -96,7 +96,9 @@ private var retryPolicy: RetryPolicy?
 
 Skip comments that only repeat the name, such as `/// The URL.` above `private var url: String`.
 
-Protocol requirements such as `==`, `hash(into:)` and `init(stringLiteral:)` may skip the parameter sections, since DocC shows the protocol's documentation.
+Protocol requirements such as `==`, `hash(into:)` and `init(stringLiteral:)` may skip the parameter sections, since DocC shows the protocol's documentation. They still need a summary, and should say what this type does differently, such as when it evicts or what it logs.
+
+Declarations marked `@available(*, unavailable)` need no doc comment. They exist only to give a clearer compiler error, so their `message` is the documentation, and DocC leaves them out.
 
 ```swift
 /// Sets the header `name` to `value`, replacing any value it had.

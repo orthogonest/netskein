@@ -5,12 +5,17 @@ import NIOHTTP1
 
 /// A response kept by an ``HTTPCache``, with what the cache needs to judge whether it can
 /// still be used.
+///
+/// You only work with it when writing your own ``CacheStorage``, which stores and returns these
+/// values as they are.
 public struct CachedResponse: Sendable {
+    /// The response status.
     public let status: HTTPResponseStatus
 
     /// The response's headers, without the ones a cache must not store, such as `Set-Cookie`.
     public let headers: HTTPHeaders
 
+    /// The response body.
     public let body: ByteBuffer
 
     /// The request headers named by the response's `Vary` header, as they were sent.
@@ -34,6 +39,19 @@ public struct CachedResponse: Sendable {
     /// `Expires`, and `0` for an invalid one, which means already expired (RFC 9111 §5.3).
     private let expiresLifetime: TimeInterval?
 
+    /// Creates a cached response, such as when a ``CacheStorage`` reads one back from disk.
+    ///
+    /// Pass back the values of a response the storage was given, unchanged, so the cache can
+    /// still judge its freshness.
+    ///
+    /// - Parameters:
+    ///   - status: The response status.
+    ///   - headers: The response headers.
+    ///   - body: The response body.
+    ///   - varyingRequestHeaders: The request headers named by the response's `Vary` header.
+    ///   - requestTime: When the request was sent.
+    ///   - responseTime: When the response was received.
+    ///   - isForced: Whether the response was stored for ``CachePolicy/fresh(for:)``.
     public init(
         status: HTTPResponseStatus,
         headers: HTTPHeaders,
