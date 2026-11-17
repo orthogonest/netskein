@@ -187,6 +187,7 @@ extension DownloadOperation {
         } catch let error as NetSkeinError {
             throw error
         } catch {
+            if Task.isCancelled { throw NetSkeinError.cancellation(error) }
             throw NetSkeinError.custom(
                 kind: .networkFailure,
                 message:

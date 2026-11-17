@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 import NIOHTTP1
 import Testing
 
@@ -181,11 +182,52 @@ extension NetSkeinErrorTests {
 }
 
 extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies cancelled has its own default descriptions")
+    func testCancelledLocalization() {
+        let error = NetSkeinError.simple(.cancelled)
+
+        #expect(error.errorDescription == "The call was cancelled.")
+        #expect(error.failureReason?.contains("task running the call was cancelled") == true)
+    }
+}
+
+extension NetSkeinErrorTests {
     @Test("NetSkeinErrorTests: Verifies timedOut has its own default descriptions")
     func testTimedOutLocalization() {
         let error = NetSkeinError.simple(.timedOut)
 
         #expect(error.errorDescription == "The call did not finish within its time limit.")
         #expect(error.failureReason?.contains("longer than the call's time limit") == true)
+    }
+}
+
+// MARK: - Body Collection
+
+extension NetSkeinErrorTests {
+    struct Dropped: Error {}
+
+    @Test("NetSkeinErrorTests: a body over the limit is an invalid payload")
+    func testBodyTooLarge() {
+        let tooMany = NIOTooManyBytesError(maxBytes: 3)
+        let error = NetSkeinError.bodyCollectionFailed(tooMany, maxBytes: 3)
+
+        #expect(error.kind == .invalidPayload)
+        #expect(error.errorDescription == "The response body is larger than the limit of 3 bytes.")
+    }
+
+    @Test("NetSkeinErrorTests: a body cut off while arriving is a network failure")
+    func testBodyCutOff() {
+        #expect(NetSkeinError.bodyCollectionFailed(Dropped(), maxBytes: 3).kind == .networkFailure)
+    }
+
+    @Test("NetSkeinErrorTests: a body that fails after the task was cancelled is a cancellation")
+    func testBodyCancelled() async {
+        let collecting = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return NetSkeinError.bodyCollectionFailed(Dropped(), maxBytes: 3).kind
+        }
+        let kind = await collecting.value
+
+        #expect(kind == .cancelled)
     }
 }

@@ -126,15 +126,3 @@ extension RequestExecutor {
         }
     }
 }
-
-// MARK: - Cancellation
-
-func checkCancellation() throws(NetSkeinError) {
-    if Task.isCancelled {
-        throw .custom(
-            kind: .networkFailure,
-            message: "Task was cancelled before the request could complete.",
-            underlyingError: CancellationError()
-        )
-    }
-}

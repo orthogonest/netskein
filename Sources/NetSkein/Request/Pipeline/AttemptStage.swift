@@ -169,12 +169,16 @@ extension Logger {
 }
 
 extension MiddlewareContext {
-    /// `error` as a ``NetSkeinError``: unchanged when it already is one, an invalid request when
-    /// AsyncHTTPClient refused the URL, otherwise logged and reported as a network failure of
-    /// `action`.
+    /// `error` as a ``NetSkeinError``: unchanged when it already is one, a cancellation when the
+    /// task was cancelled, an invalid request when AsyncHTTPClient refused the URL, otherwise
+    /// logged and reported as a network failure of `action`.
     func netSkeinError(from error: any Error, action: String) -> NetSkeinError {
         if let netSkeinError = error as? NetSkeinError {
             return netSkeinError
+        }
+
+        if Task.isCancelled {
+            return .cancellation(error)
         }
 
         if let clientError = error as? HTTPClientError, clientError.isInvalidURL {

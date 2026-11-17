@@ -208,6 +208,8 @@ extension CircuitBreakerTests {
             ("http://api.example.com:80/users", "http://api.example.com"),
             ("http://api.example.com:443/users", "http://api.example.com:443"),
             ("https://api.example.com:80/users", "https://api.example.com:80"),
+            // Other schemes have no default port here, so any port is kept
+            ("ws://api.example.com:80/chat", "ws://api.example.com:80"),
             // Without a scheme or a host there is no origin
             ("//api.example.com:443/users", "//api.example.com:443/users"),
             ("/relative/path", "/relative/path"),

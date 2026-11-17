@@ -93,7 +93,7 @@ extension RequestExecutorTests {
     }
 
     @Test(
-        "RequestExecutorTests: Verifies checkCancellation throws networkFailure when task is cancelled"
+        "RequestExecutorTests: Verifies checkCancellation throws cancelled when task is cancelled"
     )
     func testBufferedExecutionTaskCancellation() async throws {
         let stub = HTTPStub(
@@ -116,7 +116,7 @@ extension RequestExecutorTests {
             Issue.record("Expected task to fail with cancellation error")
         case .failure(let error):
             let netError = try #require(error as? NetSkeinError)
-            #expect(netError.kind == .networkFailure)
+            #expect(netError.kind == .cancelled)
         }
     }
 
@@ -189,7 +189,7 @@ extension RequestExecutorTests {
             Issue.record("Expected task to fail with cancellation during sleep")
         case .failure(let error):
             let netError = try #require(error as? NetSkeinError)
-            #expect(netError.kind == .networkFailure)
+            #expect(netError.kind == .cancelled)
         }
     }
 
@@ -907,7 +907,7 @@ extension RequestExecutorTests {
             Issue.record("Expected download to fail with cancellation error")
         case .failure(let error):
             let netError = try #require(error as? NetSkeinError)
-            #expect(netError.kind == .networkFailure)
+            #expect(netError.kind == .cancelled)
         }
     }
 

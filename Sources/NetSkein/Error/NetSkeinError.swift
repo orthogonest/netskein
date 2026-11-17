@@ -91,6 +91,10 @@ public struct NetSkeinError: Error, Sendable {
         /// The call did not finish within its ``NetSkeinRequest/callTimeout(_:)`` and was
         /// cancelled.
         case timedOut
+
+        /// The task running the call was cancelled, so the call stopped. It's what you asked for,
+        /// so it usually needs no message to the user. Not retried.
+        case cancelled
     }
 
     private enum Representation: Sendable {
@@ -160,9 +164,22 @@ extension NetSkeinError {
         )
     }
 
+    /// The error for a call stopped because its task was cancelled. `error` is what the
+    /// cancelled work threw, such as `CancellationError`.
+    static func cancellation(_ error: any Error = CancellationError()) -> NetSkeinError {
+        .custom(
+            kind: .cancelled,
+            message: "The task was cancelled before the request could complete.",
+            underlyingError: error
+        )
+    }
+
     /// The error for a response body that couldn't be collected: too large for `maxBytes`, which
-    /// a retry won't change, or cut off while arriving.
+    /// a retry won't change, cancelled, or cut off while arriving.
     static func bodyCollectionFailed(_ error: any Error, maxBytes: Int) -> NetSkeinError {
+        if Task.isCancelled {
+            return .cancellation(error)
+        }
         if error is NIOTooManyBytesError {
             return .custom(
                 kind: .invalidPayload,
@@ -234,6 +251,8 @@ extension NetSkeinError: LocalizedError {
                 return "The request was not sent because it can't be sent as built."
             case .timedOut:
                 return "The call did not finish within its time limit."
+            case .cancelled:
+                return "The call was cancelled."
             }
         case let .custom(_, data):
             return data.message
@@ -275,9 +294,20 @@ extension NetSkeinError: LocalizedError {
             case .timedOut:
                 return
                     "The attempts, the waits between them, and reading the response together took longer than the call's time limit."
+            case .cancelled:
+                return "The task running the call was cancelled before the call finished."
             }
         case let .custom(_, data):
             return data.underlyingError?.localizedDescription
         }
+    }
+}
+
+// MARK: - Cancellation
+
+/// Throws ``NetSkeinError/Kind/cancelled`` when the current task has been cancelled.
+func checkCancellation() throws(NetSkeinError) {
+    if Task.isCancelled {
+        throw .cancellation()
     }
 }
