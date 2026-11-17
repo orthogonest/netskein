@@ -5,8 +5,8 @@ import NIOHTTP1
 
 /// A private HTTP cache that follows RFC 9111.
 ///
-/// Create one, keep a reference, and pass it to the client builder's `cache(_:)`. The cache
-/// is safe to share between clients.
+/// Create one, keep a reference, and pass it to ``NetSkeinClientBuilder/cache(_:)``. The
+/// cache is safe to share between clients.
 ///
 /// ```swift
 /// let cache = HTTPCache(storage: MemoryCacheStorage(maxBytes: 20 * 1024 * 1024))
@@ -19,9 +19,11 @@ import NIOHTTP1
 /// ## What is cached
 ///
 /// Only responses to ``NetSkeinRequest/send()`` for `GET` requests without a body are stored
-/// and reused. `stream(_:)` and `download(toFileAtPath:resumption:onProgress:)` always go to
-/// the network. A successful `POST`, `PUT`, `PATCH` or `DELETE` removes the cached responses
-/// for its URL. Requests that carry their own conditional or `Range` headers bypass the cache.
+/// and reused. ``NetSkeinRequest/stream(_:)``, ``NetSkeinRequest/stream()``,
+/// ``NetSkeinRequest/lines(maxLineLength:)``, and
+/// ``NetSkeinRequest/download(toFileAtPath:resumption:onProgress:)`` always go to the
+/// network. A successful `POST`, `PUT`, `PATCH` or `DELETE` removes the cached responses for
+/// its URL. Requests that carry their own conditional or `Range` headers bypass the cache.
 ///
 /// Every response gets a `Cache-Status` header (RFC 9211) saying whether it was a `hit`, or
 /// why the request went to the network (`fwd=uri-miss`, `fwd=vary-miss`, `fwd=stale`,
@@ -39,6 +41,23 @@ import NIOHTTP1
 /// It does not store partial (`206`) responses, never stores `Set-Cookie`, and does not
 /// store responses that arrived through a redirect. Without `defaultTTL`, a response without
 /// `max-age` or `Expires` is stored but treated as stale, so it is revalidated before reuse.
+///
+/// ## Topics
+///
+/// ### Creating a Cache
+///
+/// - ``init(storage:maxEntryBytes:defaultTTL:maxStaleOnError:defaultPolicy:)``
+/// - ``CacheStorage``
+///
+/// ### Choosing a Policy
+///
+/// - ``defaultPolicy``
+/// - ``CachePolicy``
+///
+/// ### Removing Responses
+///
+/// - ``remove(url:)``
+/// - ``removeAll()``
 public final class HTTPCache: Sendable {
     let storage: any CacheStorage
     let maxEntryBytes: Int
@@ -47,22 +66,26 @@ public final class HTTPCache: Sendable {
     let now: @Sendable () -> Date
     private let policy: NIOLockedValueBox<CachePolicy>
 
+    /// Creates a cache that keeps its responses in `storage`.
+    ///
     /// - Parameters:
-    ///   - storage: Where responses are kept.
-    ///   - maxEntryBytes: Responses with a larger body are not stored.
+    ///   - storage: Where responses are kept (default: a ``MemoryCacheStorage`` of 10 MiB).
+    ///   - maxEntryBytes: Responses with a larger body are not stored (default: 1 MiB).
     ///   - defaultTTL: How long a response stays fresh when the server sends neither
-    ///     `max-age` nor `Expires`. This is RFC 9111's heuristic freshness: it never overrides
-    ///     the server's headers and only applies to status codes that are cacheable by
-    ///     default, such as `200` and `404`, or to responses marked `public`.
-    ///   - maxStaleOnError: How long past its expiry a cached response may still stand in when the
-    ///     server cannot be reached or answers `500`, `502`, `503` or `504`: the client-side
-    ///     version of RFC 5861's `stale-if-error`. `nil`, the default, returns the failure instead. Responses marked `must-revalidate` or
-    ///     `no-cache` are never used this way. Such responses carry
-    ///     `Cache-Status: NetSkein; fwd=stale; detail=error`, and are returned without retrying.
+    ///     `max-age` nor `Expires` (default: `nil`). `nil` treats such responses as stale. This
+    ///     is RFC 9111's heuristic freshness: it never overrides the server's headers and only
+    ///     applies to status codes that are cacheable by default, such as `200` and `404`, or
+    ///     to responses marked `public`.
+    ///   - maxStaleOnError: How long past its expiry a cached response may still stand in when
+    ///     the server cannot be reached or answers `500`, `502`, `503` or `504`: the
+    ///     client-side version of RFC 5861's `stale-if-error` (default: `nil`). `nil` returns
+    ///     the failure instead. Responses marked `must-revalidate` or `no-cache` are never used
+    ///     this way. Such responses carry `Cache-Status: NetSkein; fwd=stale; detail=error`, and
+    ///     are returned without retrying.
     ///     A server's own `stale-if-error` directive is ignored, so serving stale data on error
     ///     stays the app's choice.
-    ///   - defaultPolicy: The policy for requests that do not set their own. See
-    ///     ``defaultPolicy``.
+    ///   - defaultPolicy: The policy for requests that do not set their own
+    ///     (default: ``CachePolicy/default``). See ``defaultPolicy``.
     public convenience init(
         storage: some CacheStorage = MemoryCacheStorage(maxBytes: 10 * 1024 * 1024),
         maxEntryBytes: Int = 1024 * 1024,
@@ -110,6 +133,9 @@ extension HTTPCache {
     }
 
     /// Removes every cached response for `url`.
+    ///
+    /// - Parameter url: The URL, as passed to the request. A fragment is ignored, as are
+    ///   differences in the case of the scheme and host.
     public func remove(url: String) async {
         guard let key = Self.key(for: url) else { return }
         await storage.remove(url: key)

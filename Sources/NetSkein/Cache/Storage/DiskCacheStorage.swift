@@ -29,7 +29,7 @@ import NIOPosix
 /// directory may hold other files. One directory must not be shared by several processes, such
 /// as an app and its extensions: each would keep its own view of the files. Implement
 /// ``CacheStorage`` on a database such as SQLite when processes need to share a cache.
-public actor DiskCacheStorage: CacheStorage {
+public actor DiskCacheStorage {
     private struct IndexEntry {
         var bytes: Int
         var lastUsed: UInt64
@@ -75,7 +75,14 @@ public actor DiskCacheStorage: CacheStorage {
     }
 }
 
-extension DiskCacheStorage {
+extension DiskCacheStorage: CacheStorage {
+    /// Every entry stored for `url`, read from its file and marking the URL as recently used.
+    ///
+    /// A file that can't be read, or was written in another format version, is deleted and
+    /// treated as missing.
+    ///
+    /// - Parameter url: The cache's key for the URL.
+    /// - Returns: The entries, or an empty array.
     public func entries(for url: String) async -> [CachedResponse] {
         await ensureLoaded()
         let name = Self.fileName(for: url)
@@ -109,6 +116,17 @@ extension DiskCacheStorage {
         return decoded.entries
     }
 
+    /// Writes `entries` to the file for `url`, replacing it, then deletes the least recently
+    /// used files until the total fits in `maxBytes`.
+    ///
+    /// The new file replaces the old one in a single step, so a reader or a crash never sees a
+    /// partial file. When the write fails, such as on a full disk, the old file is kept and
+    /// nothing is reported.
+    ///
+    /// - Parameters:
+    ///   - entries: The entries to keep. An empty array removes the URL.
+    ///   - url: The cache's key for the URL. Its file is removed instead when the entries are
+    ///     larger than `maxBytes` on their own.
     public func store(_ entries: [CachedResponse], for url: String) async {
         await ensureLoaded()
         let name = Self.fileName(for: url)
@@ -159,11 +177,15 @@ extension DiskCacheStorage {
         }
     }
 
+    /// Deletes the file for `url`.
+    ///
+    /// - Parameter url: The cache's key for the URL.
     public func remove(url: String) async {
         await ensureLoaded()
         await discard(Self.fileName(for: url))
     }
 
+    /// Deletes every cache file. Other files in the directory are left alone.
     public func removeAll() async {
         await ensureLoaded()
         files = [:]
