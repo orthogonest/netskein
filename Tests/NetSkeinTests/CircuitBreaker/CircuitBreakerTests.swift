@@ -31,7 +31,7 @@ struct CircuitBreakerTests {
             _ = try breaker.acquire(key, logger: logger)
             return false
         } catch {
-            return error.kind == .circuitOpen
+            return error.kind == .notPermitted
         }
     }
 }

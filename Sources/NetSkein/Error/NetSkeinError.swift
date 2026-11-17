@@ -76,9 +76,11 @@ public struct NetSkeinError: Error, Sendable {
         /// token. The middleware's error is kept as the underlying error.
         case middlewareFailure
 
-        /// A ``CircuitBreaker`` rejected the request without sending it, because the server kept
-        /// failing. Not retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
-        case circuitOpen
+        /// The client refused to send the request for now, such as when a ``CircuitBreaker`` is
+        /// open. It's decided locally, without contacting the server, so it isn't a `403`. The
+        /// same request may be sent later, and the error's message says why it was refused. Not
+        /// retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
+        case notPermitted
 
         /// The request was refused before it was sent, because it can't be sent as built, such
         /// as a URL without a scheme or host. Retrying won't help: the request has to change.
@@ -208,8 +210,8 @@ extension NetSkeinError: LocalizedError {
                 return "A local filesystem or storage input/output error occurred."
             case .middlewareFailure:
                 return "A middleware failed while handling the request."
-            case .circuitOpen:
-                return "The request was not sent because the server's circuit breaker is open."
+            case .notPermitted:
+                return "The client did not permit the request to be sent for now."
             case .invalidRequest:
                 return "The request was not sent because it can't be sent as built."
             case .timedOut:
@@ -246,9 +248,9 @@ extension NetSkeinError: LocalizedError {
             case .middlewareFailure:
                 return
                     "A registered middleware threw an error of its own, such as failing to obtain credentials, before a response could be produced."
-            case .circuitOpen:
+            case .notPermitted:
                 return
-                    "The server failed repeatedly, so requests to it are rejected for a while to let it recover."
+                    "A limit in the client, such as an open circuit breaker, is holding requests back for a while. Try again later."
             case .invalidRequest:
                 return
                     "The request is malformed, such as a URL without a scheme or host, and must be changed before it can be sent."

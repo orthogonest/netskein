@@ -19,14 +19,14 @@ import NIOHTTP1
 ///
 /// - **Closed**: requests are sent. After `failureThreshold` failures in a row, the circuit
 ///   opens.
-/// - **Open**: requests fail at once with ``NetSkeinError/Kind/circuitOpen``, without being
+/// - **Open**: requests fail at once with ``NetSkeinError/Kind/notPermitted``, without being
 ///   sent, until `openDuration` has passed.
 /// - **Half-open**: up to `halfOpenMaxRequests` trial requests are sent. A success closes the
 ///   circuit. A failure opens it again for another `openDuration`.
 ///
 /// The breaker counts every attempt, including retries, and judges each one by its response
 /// status or error, before the body is read. A cancelled request is not counted. The standard
-/// retry policy does not retry `circuitOpen`, so a call to an open circuit ends right away.
+/// retry policy does not retry `notPermitted`, so a call to an open circuit ends right away.
 ///
 /// The client places the breaker between the cache and the network. Fresh cached responses are
 /// still served while a circuit is open, and with ``HTTPCache``'s `maxStaleOnError` a stale one
@@ -217,7 +217,7 @@ extension CircuitBreaker {
         case halfOpen(trials: Int)
     }
 
-    /// Lets a request to the circuit `key` through, or rejects it with `circuitOpen`.
+    /// Lets a request to the circuit `key` through, or rejects it with `notPermitted`.
     func acquire(_ key: String, logger: Logger) throws(NetSkeinError) -> Permit {
         let now = now()
         let decision: Result<Permit, NetSkeinError> = circuits.withLockedValue { circuits in
@@ -233,7 +233,7 @@ extension CircuitBreaker {
                 let seconds = Int(until.timeIntervalSince(now).rounded(.up))
                 return .failure(
                     .custom(
-                        kind: .circuitOpen,
+                        kind: .notPermitted,
                         message:
                             "The circuit for \(key) is open after repeated failures. Requests are rejected for another \(seconds) s."
                     )
@@ -246,7 +246,7 @@ extension CircuitBreaker {
             case .halfOpen:
                 return .failure(
                     .custom(
-                        kind: .circuitOpen,
+                        kind: .notPermitted,
                         message:
                             "The circuit for \(key) is half-open and its trial requests are still in flight."
                     )

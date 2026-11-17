@@ -157,12 +157,14 @@ struct MockUnderlyingError: Error, LocalizedError, Sendable {
 }
 
 extension NetSkeinErrorTests {
-    @Test("NetSkeinErrorTests: Verifies circuitOpen has its own default descriptions")
-    func testCircuitOpenLocalization() {
-        let error = NetSkeinError.simple(.circuitOpen)
+    @Test("NetSkeinErrorTests: Verifies notPermitted has its own default descriptions")
+    func testNotPermittedLocalization() {
+        let error = NetSkeinError.simple(.notPermitted)
 
-        #expect(error.errorDescription?.contains("circuit breaker is open") == true)
-        #expect(error.failureReason?.contains("The server failed repeatedly") == true)
+        #expect(
+            error.errorDescription == "The client did not permit the request to be sent for now."
+        )
+        #expect(error.failureReason?.contains("such as an open circuit breaker") == true)
     }
 }
 
