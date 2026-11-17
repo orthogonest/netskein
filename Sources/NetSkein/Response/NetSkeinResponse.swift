@@ -56,8 +56,8 @@ public struct NetSkeinResponse: Sendable {
     /// - Parameters:
     ///   - underlyingResponse: The response to collect.
     ///   - maxBytes: The largest body accepted.
-    /// - Throws: ``NetSkeinError/Kind/networkFailure`` when the body is larger than `maxBytes` or
-    ///   fails while arriving.
+    /// - Throws: ``NetSkeinError/Kind/invalidPayload`` when the body is larger than `maxBytes`,
+    ///   and ``NetSkeinError/Kind/networkFailure`` when it fails while arriving.
     public init(underlyingResponse: HTTPClientResponse, maxBytes: Int) async throws {
         self.status = underlyingResponse.status
         self.headers = underlyingResponse.headers
@@ -66,11 +66,7 @@ public struct NetSkeinResponse: Sendable {
             let collectedBytes = try await underlyingResponse.body.collect(upTo: maxBytes)
             self.body = collectedBytes.readableBytes > 0 ? collectedBytes : nil
         } catch {
-            throw NetSkeinError.custom(
-                kind: .networkFailure,
-                message: "Failed to collect response body sequence: \(error.localizedDescription)",
-                underlyingError: error
-            )
+            throw NetSkeinError.bodyCollectionFailed(error, maxBytes: maxBytes)
         }
     }
 }

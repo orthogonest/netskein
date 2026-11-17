@@ -267,6 +267,26 @@ extension StreamingResponseTests {
 
         #expect(response.text() == "too long")
     }
+
+    @Test("StreamingResponseTests: a body above maxResponseBytes fails once as invalidPayload")
+    func testBodyAboveLimitNotRetried() async throws {
+        let attempts = NIOLockedValueBox(0)
+        let client = NetSkeinClient.testing()
+            .retryPolicy(.standard(backoff: .immediate))
+            .using { request, _, next in
+                attempts.withLockedValue { $0 += 1 }
+                return try await next(request)
+            }
+            .addStubs(Array(repeating: HTTPStub.get(url).text("too long"), count: 4))
+            .build()
+
+        await #expect {
+            _ = try await client.get(url).maxResponseBytes(3).send()
+        } throws: { error in
+            (error as? NetSkeinError)?.kind == .invalidPayload
+        }
+        #expect(attempts.withLockedValue { $0 } == 1)
+    }
 }
 
 // MARK: - Transports

@@ -1,4 +1,5 @@
 import Foundation
+import NIOCore
 import NIOHTTP1
 
 /// The error every NetSkein request throws.
@@ -48,13 +49,13 @@ public struct NetSkeinError: Error, Sendable {
     @nonexhaustive
     public enum Kind: Equatable, Hashable, Sendable {
         /// No response arrived: the connection failed, DNS lookup or the TLS handshake failed, an
-        /// attempt timed out, or the response was larger than the limit.
+        /// attempt timed out, or the body was cut off while arriving.
         ///
         /// The standard retry policy retries it.
         case networkFailure
 
         /// A body couldn't be encoded or decoded, such as a response that isn't the JSON you
-        /// expected.
+        /// expected, or a response body larger than ``NetSkeinRequest/maxResponseBytes(_:)``.
         case invalidPayload
 
         /// The server answered with a `4xx` status, reported by ``NetSkeinResponse/validate()``.
@@ -156,6 +157,23 @@ extension NetSkeinError {
             kind: kind,
             message:
                 "The server returned an unexpected status code: \(status.code) (\(status.reasonPhrase))."
+        )
+    }
+
+    /// The error for a response body that couldn't be collected: too large for `maxBytes`, which
+    /// a retry won't change, or cut off while arriving.
+    static func bodyCollectionFailed(_ error: any Error, maxBytes: Int) -> NetSkeinError {
+        if error is NIOTooManyBytesError {
+            return .custom(
+                kind: .invalidPayload,
+                message: "The response body is larger than the limit of \(maxBytes) bytes.",
+                underlyingError: error
+            )
+        }
+        return .custom(
+            kind: .networkFailure,
+            message: "Failed to collect response body sequence: \(error.localizedDescription)",
+            underlyingError: error
         )
     }
 }

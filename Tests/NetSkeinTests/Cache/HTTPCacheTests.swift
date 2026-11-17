@@ -261,7 +261,7 @@ extension HTTPCacheTests {
         #expect(await storage.entries(for: itemsURL).isEmpty)
     }
 
-    @Test("HTTPCacheTests: bodies above maxResponseBytes fail as a network failure")
+    @Test("HTTPCacheTests: bodies above maxResponseBytes fail as an invalid payload")
     func testBodyAboveResponseLimit() async throws {
         let client = makeClient(
             ScriptedTransport([.response(.ok, ["Cache-Control": "max-age=60"], body: "too long")]),
@@ -271,7 +271,7 @@ extension HTTPCacheTests {
         await #expect {
             _ = try await client.get(itemsURL).maxResponseBytes(3).send()
         } throws: { error in
-            (error as? NetSkeinError)?.kind == .networkFailure
+            (error as? NetSkeinError)?.kind == .invalidPayload
         }
     }
 }

@@ -239,7 +239,7 @@ extension NetSkeinRequest {
     }
 
     /// The largest response body ``send()`` collects into memory (default: 10 MiB). A larger one
-    /// fails with a `networkFailure`. `nil` removes the limit, so the whole body is held in
+    /// fails with ``NetSkeinError/Kind/invalidPayload``, and isn't retried. `nil` removes the limit, so the whole body is held in
     /// memory however large it is.
     ///
     /// Only ``send()`` holds the whole body, so only it is limited. ``stream()``,
