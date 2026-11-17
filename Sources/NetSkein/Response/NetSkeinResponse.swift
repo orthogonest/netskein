@@ -29,7 +29,7 @@ import NIOHTTP1
 /// ### Reading the Body
 ///
 /// - ``json(_:decoder:)``
-/// - ``text(upTo:)``
+/// - ``text()``
 /// - ``bytes()``
 ///
 /// ### Reading Headers
@@ -138,9 +138,8 @@ extension NetSkeinResponse {
     ///
     /// Bytes that aren't valid UTF-8 become the replacement character `�`.
     ///
-    /// - Parameter maxLength: Not used yet: the whole body is always decoded.
     /// - Returns: The body as text, or `nil` when it's empty.
-    public func text(upTo maxLength: Int? = nil) -> String? {
+    public func text() -> String? {
         guard let body else { return nil }
         return body.getString(at: body.readerIndex, length: body.readableBytes)
     }
