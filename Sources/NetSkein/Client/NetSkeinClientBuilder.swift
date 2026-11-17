@@ -309,7 +309,8 @@ extension NetSkeinClientBuilder {
     }
 
     /// Limits every call made by the built client, attempts and waits included. Requests can
-    /// change it with ``NetSkeinRequest/callTimeout(_:)``. Calls have no overall limit unless this is set.
+    /// change it with ``NetSkeinRequest/callTimeout(_:)``. Calls have no overall limit unless
+    /// this is set.
     ///
     /// - Parameter duration: The longest a whole call can take, attempts and waits included.
     /// - Returns: A copy of the builder with the new call timeout.

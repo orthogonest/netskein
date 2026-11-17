@@ -18,7 +18,11 @@ import NIOCore
 public final class TestClock: Sendable {
     private let current: NIOLockedValueBox<Date>
 
-    /// - Parameter start: The time the clock shows until it is advanced.
+    /// Creates a clock stopped at `start`.
+    ///
+    /// - Parameter start: The time the clock shows until it is advanced
+    ///   (default: 14 November 2023, 22:13:20 UTC). The default is fixed, so a test gives the
+    ///   same result every time it runs.
     public init(start: Date = Date(timeIntervalSince1970: 1_700_000_000)) {
         current = NIOLockedValueBox(start)
     }
@@ -29,6 +33,8 @@ public final class TestClock: Sendable {
     }
 
     /// Moves the clock forward by `amount`.
+    ///
+    /// - Parameter amount: How far to move the clock. A negative amount moves it back.
     public func advance(by amount: TimeAmount) {
         current.withLockedValue { $0 += Double(amount.nanoseconds) / 1_000_000_000 }
     }

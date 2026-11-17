@@ -44,7 +44,7 @@ Every response carries a `Cache-Status` header saying what the cache did with th
 #expect(response.headers.first(name: "Cache-Status") == "NetSkein; fwd=stale; detail=error")
 ```
 
-### Test offline behaviour
+### Test offline behavior
 
 `CachePolicy.onlyIfCached` never contacts the network, so a test can check what your app shows offline. Store a response first, then switch the policy:
 
@@ -60,7 +60,7 @@ A URL with nothing stored answers `504 Gateway Timeout` under this policy, which
 
 ### Choose the storage
 
-By default, ``NetSkein/HTTPCache/testing(clock:storage:maxEntryBytes:defaultTTL:maxStaleOnError:defaultPolicy:)`` keeps responses in memory, so every test starts with an empty cache. To test behaviour across app restarts, give it a `DiskCacheStorage` on a temporary directory, and create a second client with a new storage on the same directory to play the restarted app.
+By default, ``NetSkein/HTTPCache/testing(clock:storage:maxEntryBytes:defaultTTL:maxStaleOnError:defaultPolicy:)`` keeps responses in memory, so every test starts with an empty cache. To test behavior across app restarts, give it a `DiskCacheStorage` on a temporary directory, and create a second client with a new storage on the same directory to play the restarted app.
 
 ### Limitations
 

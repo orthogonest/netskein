@@ -42,7 +42,7 @@ struct Profile: Codable {
 
 A stub starts with the method it answers, such as ``HTTPStub/get(_:)`` or ``HTTPStub/post(_:)``, and answers `200 OK` with no body until you describe the response with ``HTTPStub/status(_:)``, ``HTTPStub/header(_:_:)``, ``HTTPStub/text(_:)``, ``HTTPStub/json(_:encoder:)`` or ``HTTPStub/fail(with:)``. Several stubs for the same URL answer successive calls in order.
 
-A test client behaves like the production one: it does not retry unless you set a retry policy. To test retries, set one and register a failing stub followed by a successful one:
+A test client behaves like the production one: it does not retry unless you set a retry policy. To test retries, set one and register a failing stub followed by a successful one. An error passed to ``HTTPStub/fail(with:)`` counts as a network failure, which `RetryPolicy.standard` retries, unless it is already a `NetSkeinError`:
 
 ```swift
 let client = NetSkeinClient.testing()
@@ -80,6 +80,10 @@ Pass the client into the code under test the same way your app passes its produc
 - <doc:TestingTheCache>
 - ``TestClock``
 - ``NetSkein/HTTPCache/testing(clock:storage:maxEntryBytes:defaultTTL:maxStaleOnError:defaultPolicy:)``
+
+### Testing the Circuit Breaker
+
+- ``NetSkein/CircuitBreaker/testing(clock:failureThreshold:openDuration:halfOpenMaxRequests:key:isFailure:)``
 
 ### Testing Middleware
 

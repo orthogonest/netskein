@@ -8,6 +8,18 @@ extension CircuitBreaker {
     /// The other parameters mean the same as in
     /// `CircuitBreaker.init(failureThreshold:openDuration:halfOpenMaxRequests:key:isFailure:)`,
     /// and have the same defaults.
+    ///
+    /// - Parameters:
+    ///   - clock: Where the circuit breaker reads the current time.
+    ///   - failureThreshold: Failures in a row that open a circuit (default: 5).
+    ///   - openDuration: How long an open circuit rejects requests before allowing a trial
+    ///     (default: 30 seconds). Advance `clock` past it to allow the trial.
+    ///   - halfOpenMaxRequests: Trial requests allowed at the same time while half-open
+    ///     (default: 1).
+    ///   - key: Names the circuit a request belongs to (default: one circuit per server).
+    ///   - isFailure: Whether an attempt counts as a failure (default: network failures and
+    ///     `500`, `502`, `503` and `504`).
+    /// - Returns: The circuit breaker.
     public static func testing(
         clock: TestClock,
         failureThreshold: Int = 5,
