@@ -9,15 +9,27 @@ import NetSkein
 ///
 /// Each request is answered by the stubs matching its method and URL, in order: the first call
 /// to a route gets the first matching stub, the second call the second, and calls beyond the
-/// last stub keep getting the last one. A request without a matching stub fails with a
-/// `clientError` naming the request, so a missing stub is reported once, never retried as a
-/// network failure.
+/// last stub keep getting the last one. A route is a method and an exact URL, so a stub made
+/// with ``HTTPStub/request(_:matching:)`` counts calls separately for each URL it matches.
+///
+/// A request without a matching stub fails with a `clientError` naming the request, so a
+/// missing stub is reported once, never retried as a network failure.
+///
+/// ``NetSkein/NetSkeinClient/testing()`` creates one for you. Reach it through
+/// ``NetSkein/NetSkeinClient/mock`` to check what was sent.
 public final class MockHTTPClient: Sendable {
     let stubsBox: NIOLockedValueBox<[HTTPStub]>
+    /// How many requests each route received, keyed by method and URL.
     let callCounts: NIOLockedValueBox<[String: Int]>
     let onShutdown: NIOLockedValueBox<(@Sendable () async throws -> Void)?>
     private let received: NIOLockedValueBox<[HTTPClientRequest]>
 
+    /// Creates a transport that answers from `stubs`.
+    ///
+    /// - Parameters:
+    ///   - stubs: The stubs that answer requests, in the order they answer a route.
+    ///   - onShutdown: Runs when the client is shut down, for example to check that a test
+    ///     shuts it down (default: `nil`).
     public init(
         stubs: [HTTPStub],
         onShutdown: (@Sendable () async throws -> Void)? = nil
@@ -39,6 +51,16 @@ public final class MockHTTPClient: Sendable {
 }
 
 extension MockHTTPClient: HTTPTransport {
+    /// Records `request` and answers it from the next matching stub, after its validator and
+    /// delay.
+    ///
+    /// - Parameters:
+    ///   - request: The request to answer.
+    ///   - timeout: Ignored. A stub's delay is not cut short by it.
+    ///   - logger: Ignored.
+    /// - Returns: The stub's response, with its whole body.
+    /// - Throws: A `clientError` when no stub matches, the stub's error, or the error its
+    ///   validator throws.
     public func execute(
         _ request: HTTPClientRequest,
         timeout: TimeAmount,
@@ -95,6 +117,9 @@ extension MockHTTPClient: HTTPTransport {
         }
     }
 
+    /// Runs the `onShutdown` closure passed to ``init(stubs:onShutdown:)``, if any.
+    ///
+    /// - Throws: The error the closure throws.
     public func shutdown() async throws {
         if let closure = onShutdown.withLockedValue({ $0 }) {
             try await closure()

@@ -1,4 +1,4 @@
-.PHONY: help build _building clean _cleaning test _testing test-linux coverage _prepare-cov docs docs-preview
+.PHONY: help build _building clean _cleaning test _testing test-linux coverage _prepare-cov docs docs-preview docs-preview-testing
 
 # --- Colors ---
 
@@ -111,6 +111,10 @@ docs:
 	@echo "$(CYAN)>>> Building Documentation...$(RESET)"
 	@./Scripts/build-docs.sh
 
-## Build the NetSkein documentation and preview it in the browser
+## Preview the NetSkein documentation in the browser, rebuilding on changes
 docs-preview:
-	@./Scripts/build-docs.sh --preview
+	@./Scripts/build-docs.sh --preview NetSkein
+
+## Preview the NetSkeinTesting documentation in the browser, rebuilding on changes
+docs-preview-testing:
+	@./Scripts/build-docs.sh --preview NetSkeinTesting

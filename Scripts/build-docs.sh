@@ -5,7 +5,10 @@
 #
 # Usage:
 #   Scripts/build-docs.sh            Build every module's documentation.
-#   Scripts/build-docs.sh --preview  Build NetSkein and serve it locally.
+#   Scripts/build-docs.sh --preview [Module]
+#                                    Serve one module's documentation
+#                                    locally, rebuilding on changes
+#                                    (default: NetSkein).
 #
 # Warnings, such as a link to a symbol that no longer exists, fail the
 # build. Archives are written to .build/docs/archives.
@@ -84,7 +87,7 @@ if [ -z "$GRAPHS_DIR" ]; then
 fi
 
 if [ "${1:-}" = "--preview" ]; then
-  build_module_docs preview "$GRAPHS_DIR" "NetSkein"
+  build_module_docs preview "$GRAPHS_DIR" "${2:-NetSkein}"
   exit 0
 fi
 
