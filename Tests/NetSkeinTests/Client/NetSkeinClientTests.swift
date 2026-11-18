@@ -124,36 +124,31 @@ extension NetSkeinClientTests {
 // MARK: - Lifecycle Shutdown Fault Interception
 
 extension NetSkeinClientTests {
-    @Test(
-        "NetSkeinClientTests: Assures underlying shutdown failures catch errors and map securely to ioFailure kind parameters"
-    )
+    @Test("NetSkeinClientTests: Verifies a transport's shutdown failure is a networkFailure")
     func testShutdownFailureBranchInterception() async throws {
-        // Build a mock engine that forces a throw during shutdown execution loops
         let faultyMock = MockHTTPClient(
             stubs: [],
             onShutdown: {
                 throw MockTeardownSystemError()
             }
         )
-
         let client = NetSkeinClient(transport: faultyMock, logger: Logger(label: LoggerLabel.test))
 
-        // Execute shutdown and verify that the thrown error is safely captured and transformed
-        await #expect(throws: NetSkeinError.self) {
-            try await client.shutdown()
-        }
-
-        // Double check specific kind parameters to secure 100% boundary criteria matching logic
         do {
             try await client.shutdown()
-            Issue.record(
-                "Expected shutdown to throw a custom NetSkeinError, but it completed cleanly."
-            )
+            Issue.record("Expected shutdown to throw, but it completed cleanly.")
         } catch {
-            #expect(error.kind == .ioFailure)
-            #expect(
-                error.errorDescription?.contains("release network client system resources") == true
-            )
+            #expect(error.kind == .networkFailure)
+            #expect(error.errorDescription == "Failed to close the client's connections.")
         }
     }
+
+    @Test("NetSkeinClientTests: Verifies shutting down twice succeeds")
+    func testShutdownTwice() async throws {
+        let client = NetSkeinClient()
+
+        try await client.shutdown()
+        try await client.shutdown()
+    }
+
 }

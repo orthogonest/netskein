@@ -243,23 +243,22 @@ extension NetSkeinClient {
 
     /// Closes the client's connections and releases its resources.
     ///
-    /// Call it once, when you're done with the client. Requests sent afterwards fail. Wait for
-    /// requests in flight to finish first.
+    /// Call it when you're done with the client. Requests sent afterwards fail. Wait for
+    /// requests in flight to finish first. Calling it again does nothing.
     ///
-    /// - Throws: A ``NetSkeinError`` of kind ``NetSkeinError/Kind/ioFailure`` when the
-    ///   connections can't be closed cleanly.
+    /// - Throws: A ``NetSkeinError`` of kind ``NetSkeinError/Kind/networkFailure`` when a
+    ///   custom ``HTTPTransport`` fails to close its connections.
     public func shutdown() async throws(NetSkeinError) {
         do {
             try await transport.shutdown()
+        } catch let error as HTTPClientError where error == .alreadyShutdown {
+            return
         } catch {
-            logger.error(
-                "Failed to safely shutdown NetSkein underlying HTTP client: \(error.localizedDescription)"
-            )
+            logger.error("Failed to close the client's connections: \(error.localizedDescription)")
 
             throw NetSkeinError.custom(
-                kind: .ioFailure,
-                message:
-                    "Failed to release network client system resources and event loops cleanly.",
+                kind: .networkFailure,
+                message: "Failed to close the client's connections.",
                 underlyingError: error
             )
         }
