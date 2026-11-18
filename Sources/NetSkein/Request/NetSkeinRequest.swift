@@ -796,8 +796,8 @@ extension NetSkeinRequest {
     /// - Returns: The response status and headers.
     /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, before any
     ///   chunk is delivered. An error thrown by `onChunk` is never retried and is rethrown with
-    ///   kind `clientError`. Other failures are thrown once the retry policy gives up, or as
-    ///   soon as they happen after the first chunk.
+    ///   kind ``NetSkeinError/Kind/callbackFailure``. Other failures are thrown once the retry
+    ///   policy gives up, or as soon as they happen after the first chunk.
     @discardableResult
     public func stream(
         _ onChunk: @escaping ChunkHandler

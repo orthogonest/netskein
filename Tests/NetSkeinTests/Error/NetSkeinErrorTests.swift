@@ -182,6 +182,16 @@ extension NetSkeinErrorTests {
 }
 
 extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies callbackFailure has its own default descriptions")
+    func testCallbackFailureLocalization() {
+        let error = NetSkeinError.simple(.callbackFailure)
+
+        #expect(error.errorDescription == "A closure passed to the call threw an error.")
+        #expect(error.failureReason?.contains("such as a stream's chunk handler") == true)
+    }
+}
+
+extension NetSkeinErrorTests {
     @Test("NetSkeinErrorTests: Verifies cancelled has its own default descriptions")
     func testCancelledLocalization() {
         let error = NetSkeinError.simple(.cancelled)

@@ -264,7 +264,7 @@ extension RequestExecutorTests {
     }
 
     @Test(
-        "RequestExecutorTests: Verifies streaming execution wraps consumer callback errors as clientError"
+        "RequestExecutorTests: Verifies streaming execution wraps consumer callback errors as callbackFailure"
     )
     func testStreamingExecutionCallbackError() async {
         struct MockConsumerError: Error {}
@@ -285,9 +285,10 @@ extension RequestExecutorTests {
             _ = try await executor.stream { _, _, _ in
                 throw MockConsumerError()
             }
-            Issue.record("Expected consumer callback error to throw clientError")
+            Issue.record("Expected consumer callback error to throw callbackFailure")
         } catch {
-            #expect(error.kind == .clientError)
+            #expect(error.kind == .callbackFailure)
+            #expect(error.failureReason != nil)
         }
     }
 

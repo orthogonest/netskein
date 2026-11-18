@@ -44,7 +44,7 @@ extension StreamOperation: RequestOperation {
                 try await onChunk(buffer, receivedBytes, expectedBytes)
             } catch {
                 throw NetSkeinError.custom(
-                    kind: .clientError,
+                    kind: .callbackFailure,
                     message:
                         "Streaming chunk consumer callback failed: \(error.localizedDescription)",
                     underlyingError: error

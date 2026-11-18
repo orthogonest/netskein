@@ -19,8 +19,8 @@ public typealias DownloadProgress =
 ///
 /// Called with the chunk, the bytes received so far, and the total from `Content-Length`, or
 /// `nil` when the server doesn't send one. The next chunk is read only after the handler
-/// returns. An error it throws ends the call with kind ``NetSkeinError/Kind/clientError`` and
-/// is never retried.
+/// returns. An error it throws ends the call with kind ``NetSkeinError/Kind/callbackFailure``
+/// and is never retried.
 public typealias ChunkHandler =
     @Sendable (
         _ chunk: ByteBuffer,

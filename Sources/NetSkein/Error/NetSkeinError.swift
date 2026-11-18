@@ -59,7 +59,6 @@ public struct NetSkeinError: Error, Sendable {
         case invalidPayload
 
         /// The server answered with a `4xx` status, reported by ``NetSkeinResponse/validate()``.
-        /// Also used when a closure you passed, such as a stream's chunk handler, throws.
         case clientError
 
         /// The server answered with a `5xx` status, reported by ``NetSkeinResponse/validate()``.
@@ -76,6 +75,11 @@ public struct NetSkeinError: Error, Sendable {
         /// A middleware threw an error that isn't a ``NetSkeinError``, such as failing to fetch a
         /// token. The middleware's error is kept as the underlying error.
         case middlewareFailure
+
+        /// A closure you passed to the call threw, such as the chunk handler of
+        /// ``NetSkeinRequest/stream(_:)``. Your error is kept as the underlying error. Never
+        /// retried.
+        case callbackFailure
 
         /// The client refused to send the request for now, such as when a ``CircuitBreaker`` is
         /// open. It's decided locally, without contacting the server, so it isn't a `403`. The
@@ -246,6 +250,8 @@ extension NetSkeinError: LocalizedError {
                 return "A local filesystem or storage input/output error occurred."
             case .middlewareFailure:
                 return "A middleware failed while handling the request."
+            case .callbackFailure:
+                return "A closure passed to the call threw an error."
             case .notPermitted:
                 return "The client did not permit the request to be sent for now."
             case .invalidRequest:
@@ -286,6 +292,9 @@ extension NetSkeinError: LocalizedError {
             case .middlewareFailure:
                 return
                     "A registered middleware threw an error of its own, such as failing to obtain credentials, before a response could be produced."
+            case .callbackFailure:
+                return
+                    "Code passed to the call, such as a stream's chunk handler, threw an error of its own."
             case .notPermitted:
                 return
                     "A limit in the client, such as an open circuit breaker, is holding requests back for a while. Try again later."
