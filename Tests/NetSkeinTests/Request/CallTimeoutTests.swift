@@ -68,7 +68,7 @@ extension CallTimeoutTests {
 
         await #expect {
             _ = try await call.value
-        } throws: { kind(of: $0) == .networkFailure }
+        } throws: { kind(of: $0) == .cancelled }
     }
 
     @Test("CallTimeoutTests: a timed-out call does not count against the server's circuit")

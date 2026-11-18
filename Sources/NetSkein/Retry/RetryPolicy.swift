@@ -94,7 +94,7 @@ extension RetryPolicy {
     ///
     /// It retries responses with status `408`, `429`, `500`, `502`, `503` or `504`, and errors
     /// of kind ``NetSkeinError/Kind/networkFailure``. It doesn't retry other errors, such as
-    /// ``NetSkeinError/Kind/timedOut`` or ``NetSkeinError/Kind/circuitOpen``.
+    /// ``NetSkeinError/Kind/timedOut`` or ``NetSkeinError/Kind/notPermitted``.
     ///
     /// It retries only idempotent methods, `GET`, `HEAD`, `PUT`, `DELETE`, `OPTIONS` and `TRACE`,
     /// unless `retryNonIdempotent` is `true`, since repeating a `POST` could repeat its effect.

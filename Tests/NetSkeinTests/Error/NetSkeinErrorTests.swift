@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 import NIOHTTP1
 import Testing
 
@@ -157,12 +158,46 @@ struct MockUnderlyingError: Error, LocalizedError, Sendable {
 }
 
 extension NetSkeinErrorTests {
-    @Test("NetSkeinErrorTests: Verifies circuitOpen has its own default descriptions")
-    func testCircuitOpenLocalization() {
-        let error = NetSkeinError.simple(.circuitOpen)
+    @Test("NetSkeinErrorTests: Verifies notPermitted has its own default descriptions")
+    func testNotPermittedLocalization() {
+        let error = NetSkeinError.simple(.notPermitted)
 
-        #expect(error.errorDescription?.contains("circuit breaker is open") == true)
-        #expect(error.failureReason?.contains("The server failed repeatedly") == true)
+        #expect(
+            error.errorDescription == "The client did not permit the request to be sent for now."
+        )
+        #expect(error.failureReason?.contains("such as an open circuit breaker") == true)
+    }
+}
+
+extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies invalidRequest has its own default descriptions")
+    func testInvalidRequestLocalization() {
+        let error = NetSkeinError.simple(.invalidRequest)
+
+        #expect(
+            error.errorDescription == "The request was not sent because it can't be sent as built."
+        )
+        #expect(error.failureReason?.contains("such as a URL without a scheme") == true)
+    }
+}
+
+extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies callbackFailure has its own default descriptions")
+    func testCallbackFailureLocalization() {
+        let error = NetSkeinError.simple(.callbackFailure)
+
+        #expect(error.errorDescription == "A closure passed to the call threw an error.")
+        #expect(error.failureReason?.contains("such as a stream's chunk handler") == true)
+    }
+}
+
+extension NetSkeinErrorTests {
+    @Test("NetSkeinErrorTests: Verifies cancelled has its own default descriptions")
+    func testCancelledLocalization() {
+        let error = NetSkeinError.simple(.cancelled)
+
+        #expect(error.errorDescription == "The call was cancelled.")
+        #expect(error.failureReason?.contains("task running the call was cancelled") == true)
     }
 }
 
@@ -173,5 +208,36 @@ extension NetSkeinErrorTests {
 
         #expect(error.errorDescription == "The call did not finish within its time limit.")
         #expect(error.failureReason?.contains("longer than the call's time limit") == true)
+    }
+}
+
+// MARK: - Body Collection
+
+extension NetSkeinErrorTests {
+    struct Dropped: Error {}
+
+    @Test("NetSkeinErrorTests: a body over the limit is an invalid payload")
+    func testBodyTooLarge() {
+        let tooMany = NIOTooManyBytesError(maxBytes: 3)
+        let error = NetSkeinError.bodyCollectionFailed(tooMany, maxBytes: 3)
+
+        #expect(error.kind == .invalidPayload)
+        #expect(error.errorDescription == "The response body is larger than the limit of 3 bytes.")
+    }
+
+    @Test("NetSkeinErrorTests: a body cut off while arriving is a network failure")
+    func testBodyCutOff() {
+        #expect(NetSkeinError.bodyCollectionFailed(Dropped(), maxBytes: 3).kind == .networkFailure)
+    }
+
+    @Test("NetSkeinErrorTests: a body that fails after the task was cancelled is a cancellation")
+    func testBodyCancelled() async {
+        let collecting = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return NetSkeinError.bodyCollectionFailed(Dropped(), maxBytes: 3).kind
+        }
+        let kind = await collecting.value
+
+        #expect(kind == .cancelled)
     }
 }

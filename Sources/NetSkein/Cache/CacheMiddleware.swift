@@ -271,11 +271,7 @@ extension CacheExchange {
         do {
             body = try await response.body.collect(upTo: maxResponseBytes)
         } catch {
-            throw NetSkeinError.custom(
-                kind: .networkFailure,
-                message: "Failed to collect response body sequence: \(error.localizedDescription)",
-                underlyingError: error
-            )
+            throw NetSkeinError.bodyCollectionFailed(error, maxBytes: maxResponseBytes)
         }
         response.body = .bytes(body)
 

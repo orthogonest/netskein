@@ -185,17 +185,20 @@ extension NetSkeinRequest {
     ///     .path("users/\(username)")  // "a/b" becomes "a%2Fb"
     /// ```
     ///
-    /// See ``PathSegment`` for which values are encoded. Call ``path(_:)`` before ``query(_:)``:
-    /// the URL is treated as text, so a segment added after a query lands inside it.
+    /// See ``PathSegment`` for which values are encoded. The segment goes before any query or
+    /// fragment, so ``path(_:)`` and ``query(_:)`` can be called in any order.
     ///
     /// - Parameter segment: The path to append, such as `"users/\(id)"`.
     /// - Returns: A copy of the request with the longer path.
     @discardableResult
     public func path(_ segment: PathSegment) -> Self {
-        var copy = self
-        let currentURL = copy.url.trimmingCharacters(in: ["/"])
+        // A path can't contain `?` or `#`, so the first one starts the query or fragment
+        let pathEnd = url.firstIndex { $0 == "?" || $0 == "#" } ?? url.endIndex
+        let currentPath = url[..<pathEnd].trimmingCharacters(in: ["/"])
         let newSegment = segment.value.trimmingCharacters(in: ["/"])
-        copy.url = "\(currentURL)/\(newSegment)"
+
+        var copy = self
+        copy.url = "\(currentPath)/\(newSegment)\(url[pathEnd...])"
         return copy
     }
 
@@ -236,7 +239,7 @@ extension NetSkeinRequest {
     }
 
     /// The largest response body ``send()`` collects into memory (default: 10 MiB). A larger one
-    /// fails with a `networkFailure`. `nil` removes the limit, so the whole body is held in
+    /// fails with ``NetSkeinError/Kind/invalidPayload``, and isn't retried. `nil` removes the limit, so the whole body is held in
     /// memory however large it is.
     ///
     /// Only ``send()`` holds the whole body, so only it is limited. ``stream()``,
@@ -418,7 +421,7 @@ extension NetSkeinRequest where Body == BodyAllowed {
     /// It's encoded with a default `JSONEncoder`, so dates, keys and other values use its
     /// default strategies.
     ///
-    /// - Throws: ``NetSkeinError/Kind/invalidPayload`` when `bodyObject` can't be encoded.
+    /// - Throws: ``NetSkeinError/Kind/invalidRequest`` when `bodyObject` can't be encoded.
     /// - Parameter bodyObject: The value to send, such as a `Codable` struct.
     /// - Returns: A copy of the request with the JSON as its body.
     @discardableResult
@@ -452,8 +455,8 @@ extension NetSkeinRequest where Body == BodyAllowed {
             )
         } catch {
             throw .custom(
-                kind: .invalidPayload,
-                message: "Failed to decode JSON request: \(error.localizedDescription)",
+                kind: .invalidRequest,
+                message: "Failed to encode JSON request:\(error.localizedDescription)",
                 underlyingError: error
             )
         }
@@ -793,8 +796,8 @@ extension NetSkeinRequest {
     /// - Returns: The response status and headers.
     /// - Throws: ``NetSkeinError/badStatus(_:)`` for a response outside `200..<300`, before any
     ///   chunk is delivered. An error thrown by `onChunk` is never retried and is rethrown with
-    ///   kind `clientError`. Other failures are thrown once the retry policy gives up, or as
-    ///   soon as they happen after the first chunk.
+    ///   kind ``NetSkeinError/Kind/callbackFailure``. Other failures are thrown once the retry
+    ///   policy gives up, or as soon as they happen after the first chunk.
     @discardableResult
     public func stream(
         _ onChunk: @escaping ChunkHandler
@@ -866,8 +869,9 @@ extension NetSkeinRequest {
     /// ```
     ///
     /// The file is created, or replaced when it already exists, unless `resumption` is
-    /// ``DownloadResumption/ifPossible(validator:)``. A download that fails leaves what it wrote
-    /// on disk. Delete the file yourself if you don't want to resume it later.
+    /// ``DownloadResumption/ifPossible(validator:)``. A download that fails deletes the file,
+    /// except with ``DownloadResumption/ifPossible(validator:)``, which keeps what it wrote so
+    /// a later download can resume it. Delete it yourself if you won't.
     ///
     /// ## Retries and Resuming
     ///

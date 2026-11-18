@@ -127,7 +127,7 @@ extension StreamingResponseTests {
         await #expect {
             try await reading.value
         } throws: { error in
-            (error as? NetSkeinError)?.kind == .networkFailure
+            (error as? NetSkeinError)?.kind == .cancelled
         }
     }
 
@@ -143,8 +143,44 @@ extension StreamingResponseTests {
             return count
         }
 
-        await #expect(throws: NetSkeinError.self) {
+        await #expect {
             _ = try await reading.value
+        } throws: { error in
+            (error as? NetSkeinError)?.kind == .cancelled
+        }
+    }
+
+    @Test(
+        "StreamingResponseTests: a body that fails after the task was cancelled reports a cancellation"
+    )
+    func testCancellationFailingTheBody() async throws {
+        let (client, _) = makeClient([.cancelling(failure: Dropped())])
+        let response = try await client.get(url).stream()
+
+        let reading = Task { for try await _ in response {} }
+
+        await #expect {
+            try await reading.value
+        } throws: { error in
+            (error as? NetSkeinError)?.kind == .cancelled
+        }
+    }
+
+    @Test(
+        "StreamingResponseTests: a download that fails after the task was cancelled reports a cancellation"
+    )
+    func testDownloadCancellationFailingTheBody() async throws {
+        let (client, _) = makeClient([.cancelling(failure: Dropped())])
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cancelled_\(UUID().uuidString).bin").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let downloading = Task { try await client.get(url).download(toFileAtPath: path) }
+
+        await #expect {
+            try await downloading.value
+        } throws: { error in
+            (error as? NetSkeinError)?.kind == .cancelled
         }
     }
 }
@@ -267,6 +303,26 @@ extension StreamingResponseTests {
 
         #expect(response.text() == "too long")
     }
+
+    @Test("StreamingResponseTests: a body above maxResponseBytes fails once as invalidPayload")
+    func testBodyAboveLimitNotRetried() async throws {
+        let attempts = NIOLockedValueBox(0)
+        let client = NetSkeinClient.testing()
+            .retryPolicy(.standard(backoff: .immediate))
+            .using { request, _, next in
+                attempts.withLockedValue { $0 += 1 }
+                return try await next(request)
+            }
+            .addStubs(Array(repeating: HTTPStub.get(url).text("too long"), count: 4))
+            .build()
+
+        await #expect {
+            _ = try await client.get(url).maxResponseBytes(3).send()
+        } throws: { error in
+            (error as? NetSkeinError)?.kind == .invalidPayload
+        }
+        #expect(attempts.withLockedValue { $0 } == 1)
+    }
 }
 
 // MARK: - Transports
@@ -280,6 +336,8 @@ final class ChunkedTransport: HTTPTransport {
             headers: HTTPHeaders = [:],
             failure: (any Error & Sendable)? = nil
         )
+        /// A body that cancels the task reading it, then fails with `failure`.
+        case cancelling(failure: any Error & Sendable)
     }
 
     struct UnexpectedRequest: Error {}
@@ -299,11 +357,13 @@ final class ChunkedTransport: HTTPTransport {
         logger: Logger?
     ) async throws -> HTTPClientResponse {
         count.withLockedValue { $0 += 1 }
-        guard
-            case let .chunks(chunks, status, headers, failure) = replies.withLockedValue({
-                $0.isEmpty ? nil : $0.removeFirst()
-            })
-        else { throw UnexpectedRequest() }
+        let reply = replies.withLockedValue { $0.isEmpty ? nil : $0.removeFirst() }
+        if case let .cancelling(failure) = reply {
+            return HTTPClientResponse(status: .ok, body: .stream(CancellingBody(failure: failure)))
+        }
+        guard case let .chunks(chunks, status, headers, failure) = reply else {
+            throw UnexpectedRequest()
+        }
 
         let body = AsyncThrowingStream<ByteBuffer, any Error> { continuation in
             for chunk in chunks { continuation.yield(chunk) }
@@ -315,16 +375,22 @@ final class ChunkedTransport: HTTPTransport {
     func shutdown() async throws {}
 }
 
-/// A body that cancels the task reading it, then ends as if complete.
+/// A body that cancels the task reading it, then fails with `failure`, or ends as if complete
+/// without one.
 private struct CancellingBody: AsyncSequence, Sendable {
     typealias Element = ByteBuffer
 
+    var failure: (any Error & Sendable)?
+
     struct AsyncIterator: AsyncIteratorProtocol {
+        let failure: (any Error & Sendable)?
+
         mutating func next() async throws -> ByteBuffer? {
             withUnsafeCurrentTask { $0?.cancel() }
+            if let failure { throw failure }
             return nil
         }
     }
 
-    func makeAsyncIterator() -> AsyncIterator { AsyncIterator() }
+    func makeAsyncIterator() -> AsyncIterator { AsyncIterator(failure: failure) }
 }

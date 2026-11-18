@@ -12,7 +12,7 @@ import NetSkein
 /// last stub keep getting the last one. A route is a method and an exact URL, so a stub made
 /// with ``HTTPStub/request(_:matching:)`` counts calls separately for each URL it matches.
 ///
-/// A request without a matching stub fails with a `clientError` naming the request, so a
+/// A request without a matching stub fails with an `invalidRequest` naming the request, so a
 /// missing stub is reported once, never retried as a network failure.
 ///
 /// ``NetSkein/NetSkeinClient/testing()`` creates one for you. Reach it through
@@ -59,7 +59,7 @@ extension MockHTTPClient: HTTPTransport {
     ///   - timeout: Ignored. A stub's delay is not cut short by it.
     ///   - logger: Ignored.
     /// - Returns: The stub's response, with its whole body.
-    /// - Throws: A `clientError` when no stub matches, the stub's error, or the error its
+    /// - Throws: An `invalidRequest` when no stub matches, the stub's error, or the error its
     ///   validator throws.
     public func execute(
         _ request: HTTPClientRequest,
@@ -84,7 +84,7 @@ extension MockHTTPClient: HTTPTransport {
         guard !matches.isEmpty else {
             // A missing stub is a mistake in the test, not a network failure, so it is never retried
             throw NetSkeinError.custom(
-                kind: .clientError,
+                kind: .invalidRequest,
                 message: """
                     No HTTPStub matches \(request.method.rawValue) \(request.url). Add one, for example \
                     HTTPStub.request(.\(request.method.rawValue), url: "\(request.url)")

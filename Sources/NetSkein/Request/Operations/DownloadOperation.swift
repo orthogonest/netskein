@@ -47,6 +47,21 @@ extension DownloadOperation {
         FileManager.default.createFile(atPath: path, contents: nil)
     }
 
+    /// Removes the file after the call failed, unless a later download can resume it. Without
+    /// ``DownloadResumption/ifPossible(validator:)``, the next download replaces it anyway.
+    func discardFailedFile() {
+        if case .ifPossible = resumption { return }
+
+        // Only a regular file can be this download's. A directory at `path` made the download
+        // fail, and must not be deleted with it
+        guard
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+            attributes[.type] as? FileAttributeType == .typeRegular
+        else { return }
+
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
     private func resumableFileSize() -> Int64 {
         guard
             resumption != .disabled,
@@ -172,6 +187,7 @@ extension DownloadOperation {
         } catch let error as NetSkeinError {
             throw error
         } catch {
+            if Task.isCancelled { throw NetSkeinError.cancellation(error) }
             throw NetSkeinError.custom(
                 kind: .networkFailure,
                 message:
@@ -200,13 +216,19 @@ extension DownloadOperation: RequestOperation {
         }
 
         var headers: HTTPHeaders = ["Range": "bytes=\(existingBytes)-"]
+        var warning: String?
         if let validator {
             headers.add(name: "If-Range", value: validator)
+        } else {
+            warning =
+                "Resuming download from byte \(existingBytes) without a validator. "
+                + "If the file changed on the server, the result will mix two versions."
         }
 
         return AttemptSetup(
             description: "download resumption from byte \(existingBytes)",
-            extraHeaders: headers
+            extraHeaders: headers,
+            warning: warning
         )
     }
 

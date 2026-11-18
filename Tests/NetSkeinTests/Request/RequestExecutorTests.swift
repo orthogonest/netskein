@@ -93,7 +93,7 @@ extension RequestExecutorTests {
     }
 
     @Test(
-        "RequestExecutorTests: Verifies checkCancellation throws networkFailure when task is cancelled"
+        "RequestExecutorTests: Verifies checkCancellation throws cancelled when task is cancelled"
     )
     func testBufferedExecutionTaskCancellation() async throws {
         let stub = HTTPStub(
@@ -116,7 +116,7 @@ extension RequestExecutorTests {
             Issue.record("Expected task to fail with cancellation error")
         case .failure(let error):
             let netError = try #require(error as? NetSkeinError)
-            #expect(netError.kind == .networkFailure)
+            #expect(netError.kind == .cancelled)
         }
     }
 
@@ -189,7 +189,7 @@ extension RequestExecutorTests {
             Issue.record("Expected task to fail with cancellation during sleep")
         case .failure(let error):
             let netError = try #require(error as? NetSkeinError)
-            #expect(netError.kind == .networkFailure)
+            #expect(netError.kind == .cancelled)
         }
     }
 
@@ -264,7 +264,7 @@ extension RequestExecutorTests {
     }
 
     @Test(
-        "RequestExecutorTests: Verifies streaming execution wraps consumer callback errors as clientError"
+        "RequestExecutorTests: Verifies streaming execution wraps consumer callback errors as callbackFailure"
     )
     func testStreamingExecutionCallbackError() async {
         struct MockConsumerError: Error {}
@@ -285,9 +285,10 @@ extension RequestExecutorTests {
             _ = try await executor.stream { _, _, _ in
                 throw MockConsumerError()
             }
-            Issue.record("Expected consumer callback error to throw clientError")
+            Issue.record("Expected consumer callback error to throw callbackFailure")
         } catch {
-            #expect(error.kind == .clientError)
+            #expect(error.kind == .callbackFailure)
+            #expect(error.failureReason != nil)
         }
     }
 
@@ -491,6 +492,42 @@ extension RequestExecutorTests {
     }
 
     @Test(
+        "RequestExecutorTests: Verifies resuming without a validator logs a warning",
+        arguments: [(nil, true), ("\"etag\"", false), ("W/\"weak\"", true)] as [(String?, Bool)]
+    )
+    func testDownloadResumptionWarnsWithoutValidator(validator: String?, warns: Bool) async throws {
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_resume_warn_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+        try Data("0123456789".utf8).write(to: destURL)
+
+        let records = NIOLockedValueBox<[(Logger.Level, String)]>([])
+        let stub = HTTPStub(
+            method: .GET,
+            url: "https://api.example.com/file.bin",
+            outcome: .response(
+                status: .partialContent,
+                headers: ["Content-Range": "bytes 10-14/15"],
+                body: ByteBuffer(string: "ABCDE")
+            )
+        )
+        let client = NetSkeinClient.testing()
+            .logger(Logger(label: "test") { _ in CapturingLogHandler(records: records) })
+            .addStub(stub)
+            .build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/file.bin")
+
+        try await executor.download(
+            to: destURL.path,
+            resumption: .ifPossible(validator: validator)
+        )
+
+        let warnings = records.withLockedValue { $0 }
+            .filter { $0.0 == .warning && $0.1.contains("without a validator") }
+        #expect(warnings.count == (warns ? 1 : 0))
+    }
+
+    @Test(
         "RequestExecutorTests: Verifies download resumption resets and overwrites when server returns 200 OK"
     )
     func testDownloadExecutionResumptionFallbackTo200OK() async throws {
@@ -549,7 +586,7 @@ extension RequestExecutorTests {
         await #expect(throws: NetSkeinError.self) {
             try await executor.download(
                 to: destURL.path,
-                resumption: .ifPossible()
+                resumption: .ifPossible(validator: nil)
             )
         }
 
@@ -665,7 +702,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.download(to: destURL.path, resumption: .ifPossible())
+            try await executor.download(to: destURL.path, resumption: .ifPossible(validator: nil))
             Issue.record(
                 "Expected download to throw .ioFailure when opening read-only file for append"
             )
@@ -701,6 +738,62 @@ extension RequestExecutorTests {
 
         let resultData = try String(contentsOf: destURL, encoding: .utf8)
         #expect(resultData == "NEW")
+    }
+
+    @Test(
+        "RequestExecutorTests: a failed download removes its partial file unless it can resume it",
+        arguments: [DownloadResumption.disabled, .onRetry]
+    )
+    func testFailedDownloadRemovesPartialFile(resumption: DownloadResumption) async throws {
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_failed_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let (client, _) = makeDroppingClient()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/drop")
+
+        await #expect(throws: NetSkeinError.self) {
+            try await executor.download(to: destURL.path, resumption: resumption)
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: destURL.path))
+    }
+
+    @Test("RequestExecutorTests: a download to a directory fails without deleting the directory")
+    func testFailedDownloadKeepsDirectory() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_directory_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let inside = directory.appendingPathComponent("keep.txt")
+        try Data("KEEP".utf8).write(to: inside)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let client = NetSkeinClient.testing()
+            .addStub(HTTPStub.get("https://api.example.com/file").text("BODY"))
+            .build()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/file")
+
+        await #expect(throws: NetSkeinError.self) {
+            try await executor.download(to: directory.path)
+        }
+
+        #expect(try String(contentsOf: inside, encoding: .utf8) == "KEEP")
+    }
+
+    @Test("RequestExecutorTests: a failed download keeps its partial file to resume later")
+    func testFailedDownloadKeepsResumableFile() async throws {
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_failed_resumable_\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: destURL) }
+
+        let (client, _) = makeDroppingClient()
+        let executor = makeExecutor(client: client, url: "https://api.example.com/drop")
+
+        await #expect(throws: NetSkeinError.self) {
+            try await executor.download(to: destURL.path, resumption: .ifPossible(validator: nil))
+        }
+
+        #expect(try String(contentsOf: destURL, encoding: .utf8) == "PART")
     }
 
     @Test("RequestExecutorTests: Verifies Last-Modified header is captured when ETag is absent")
@@ -815,7 +908,7 @@ extension RequestExecutorTests {
             Issue.record("Expected download to fail with cancellation error")
         case .failure(let error):
             let netError = try #require(error as? NetSkeinError)
-            #expect(netError.kind == .networkFailure)
+            #expect(netError.kind == .cancelled)
         }
     }
 
@@ -845,7 +938,7 @@ extension RequestExecutorTests {
 
         try await executor.download(
             to: destURL.path,
-            resumption: .ifPossible(),
+            resumption: .ifPossible(validator: nil),
             onProgress: { _, total in
                 reportedTotal.withLockedValue { $0 = total }
             }
@@ -936,7 +1029,7 @@ extension RequestExecutorTests {
         )
 
         do {
-            try await executor.download(to: fifo.path, resumption: .ifPossible())
+            try await executor.download(to: fifo.path, resumption: .ifPossible(validator: nil))
             Issue.record("Expected download to throw .ioFailure when the target cannot be seeked")
         } catch {
             #expect(error.kind == .ioFailure)
@@ -1352,6 +1445,20 @@ extension RequestExecutorTests {
             callMiddlewares: callMiddlewares,
             attemptMiddlewares: attemptMiddlewares
         )
+    }
+
+    /// A client whose only response sends `PART`, then drops the connection.
+    private func makeDroppingClient() -> (NetSkeinClient, ChunkedTransport) {
+        let transport = ChunkedTransport([
+            .chunks([ByteBuffer(string: "PART")], failure: MockStubOutageError())
+        ])
+        let client = NetSkeinClient(
+            transport: transport,
+            retryPolicy: .disabled,
+            tracer: nil,
+            logger: Logger(label: LoggerLabel.test)
+        )
+        return (client, transport)
     }
 
     /// Creates a named pipe with a non-blocking reader attached, so writers can open it without blocking.

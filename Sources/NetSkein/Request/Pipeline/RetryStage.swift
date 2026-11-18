@@ -154,11 +154,8 @@ struct RetryStage: Sendable {
             let nanoseconds = UInt64(max(0, delay.nanoseconds))
             try await Task.sleep(nanoseconds: nanoseconds)
         } catch {
-            throw .custom(
-                kind: .networkFailure,
-                message: "Retry sleep cancelled or interrupted: \(error.localizedDescription)",
-                underlyingError: error
-            )
+            // Sleeping only fails when the task is cancelled
+            throw .cancellation(error)
         }
     }
 }

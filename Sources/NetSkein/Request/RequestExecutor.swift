@@ -118,18 +118,11 @@ extension RequestExecutor {
             onProgress: onProgress
         )
         operation.discardStaleFile()
-        try await run(operation)
-    }
-}
-
-// MARK: - Cancellation
-
-func checkCancellation() throws(NetSkeinError) {
-    if Task.isCancelled {
-        throw .custom(
-            kind: .networkFailure,
-            message: "Task was cancelled before the request could complete.",
-            underlyingError: CancellationError()
-        )
+        do {
+            try await run(operation)
+        } catch {
+            operation.discardFailedFile()
+            throw error
+        }
     }
 }

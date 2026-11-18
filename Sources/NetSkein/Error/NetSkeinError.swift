@@ -1,4 +1,5 @@
 import Foundation
+import NIOCore
 import NIOHTTP1
 
 /// The error every NetSkein request throws.
@@ -48,17 +49,16 @@ public struct NetSkeinError: Error, Sendable {
     @nonexhaustive
     public enum Kind: Equatable, Hashable, Sendable {
         /// No response arrived: the connection failed, DNS lookup or the TLS handshake failed, an
-        /// attempt timed out, or the response was larger than the limit.
+        /// attempt timed out, or the body was cut off while arriving.
         ///
         /// The standard retry policy retries it.
         case networkFailure
 
-        /// A body couldn't be encoded or decoded, such as a response that isn't the JSON you
-        /// expected.
+        /// A response body couldn't be used, such as one that isn't the JSON you expected, or
+        /// one larger than ``NetSkeinRequest/maxResponseBytes(_:)``.
         case invalidPayload
 
         /// The server answered with a `4xx` status, reported by ``NetSkeinResponse/validate()``.
-        /// Also used when a closure you passed, such as a stream's chunk handler, throws.
         case clientError
 
         /// The server answered with a `5xx` status, reported by ``NetSkeinResponse/validate()``.
@@ -76,13 +76,30 @@ public struct NetSkeinError: Error, Sendable {
         /// token. The middleware's error is kept as the underlying error.
         case middlewareFailure
 
-        /// A ``CircuitBreaker`` rejected the request without sending it, because the server kept
-        /// failing. Not retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
-        case circuitOpen
+        /// A closure you passed to the call threw, such as the chunk handler of
+        /// ``NetSkeinRequest/stream(_:)``. Your error is kept as the underlying error. Never
+        /// retried.
+        case callbackFailure
+
+        /// The client refused to send the request for now, such as when a ``CircuitBreaker`` is
+        /// open. It's decided locally, without contacting the server, so it isn't a `403`. The
+        /// same request may be sent later, and the error's message says why it was refused. Not
+        /// retried by ``RetryPolicy/standard(maxRetries:backoff:retryNonIdempotent:maxRetryAfter:)``.
+        case notPermitted
+
+        /// The request was refused before it was sent, because it can't be sent as built, such
+        /// as a URL without a scheme or host, or a ``NetSkeinRequest/json(_:)`` body that can't
+        /// be encoded. In tests, also a request that no stub matches. Retrying won't help: the
+        /// request has to change. The error that caused it is kept as the underlying error.
+        case invalidRequest
 
         /// The call did not finish within its ``NetSkeinRequest/callTimeout(_:)`` and was
         /// cancelled.
         case timedOut
+
+        /// The task running the call was cancelled, so the call stopped. It's what you asked for,
+        /// so it usually needs no message to the user. Not retried.
+        case cancelled
     }
 
     private enum Representation: Sendable {
@@ -151,6 +168,36 @@ extension NetSkeinError {
                 "The server returned an unexpected status code: \(status.code) (\(status.reasonPhrase))."
         )
     }
+
+    /// The error for a call stopped because its task was cancelled. `error` is what the
+    /// cancelled work threw, such as `CancellationError`.
+    static func cancellation(_ error: any Error = CancellationError()) -> NetSkeinError {
+        .custom(
+            kind: .cancelled,
+            message: "The task was cancelled before the request could complete.",
+            underlyingError: error
+        )
+    }
+
+    /// The error for a response body that couldn't be collected: too large for `maxBytes`, which
+    /// a retry won't change, cancelled, or cut off while arriving.
+    static func bodyCollectionFailed(_ error: any Error, maxBytes: Int) -> NetSkeinError {
+        if Task.isCancelled {
+            return .cancellation(error)
+        }
+        if error is NIOTooManyBytesError {
+            return .custom(
+                kind: .invalidPayload,
+                message: "The response body is larger than the limit of \(maxBytes) bytes.",
+                underlyingError: error
+            )
+        }
+        return .custom(
+            kind: .networkFailure,
+            message: "Failed to collect response body sequence: \(error.localizedDescription)",
+            underlyingError: error
+        )
+    }
 }
 
 extension NetSkeinError: Equatable {
@@ -203,10 +250,16 @@ extension NetSkeinError: LocalizedError {
                 return "A local filesystem or storage input/output error occurred."
             case .middlewareFailure:
                 return "A middleware failed while handling the request."
-            case .circuitOpen:
-                return "The request was not sent because the server's circuit breaker is open."
+            case .callbackFailure:
+                return "A closure passed to the call threw an error."
+            case .notPermitted:
+                return "The client did not permit the request to be sent for now."
+            case .invalidRequest:
+                return "The request was not sent because it can't be sent as built."
             case .timedOut:
                 return "The call did not finish within its time limit."
+            case .cancelled:
+                return "The call was cancelled."
             }
         case let .custom(_, data):
             return data.message
@@ -239,15 +292,32 @@ extension NetSkeinError: LocalizedError {
             case .middlewareFailure:
                 return
                     "A registered middleware threw an error of its own, such as failing to obtain credentials, before a response could be produced."
-            case .circuitOpen:
+            case .callbackFailure:
                 return
-                    "The server failed repeatedly, so requests to it are rejected for a while to let it recover."
+                    "Code passed to the call, such as a stream's chunk handler, threw an error of its own."
+            case .notPermitted:
+                return
+                    "A limit in the client, such as an open circuit breaker, is holding requests back for a while. Try again later."
+            case .invalidRequest:
+                return
+                    "The request is malformed, such as a URL without a scheme or host, and must be changed before it can be sent."
             case .timedOut:
                 return
                     "The attempts, the waits between them, and reading the response together took longer than the call's time limit."
+            case .cancelled:
+                return "The task running the call was cancelled before the call finished."
             }
         case let .custom(_, data):
             return data.underlyingError?.localizedDescription
         }
+    }
+}
+
+// MARK: - Cancellation
+
+/// Throws ``NetSkeinError/Kind/cancelled`` when the current task has been cancelled.
+func checkCancellation() throws(NetSkeinError) {
+    if Task.isCancelled {
+        throw .cancellation()
     }
 }

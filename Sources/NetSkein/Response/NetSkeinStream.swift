@@ -21,7 +21,7 @@ import NIOHTTP1
 /// connection.
 ///
 /// The body can be iterated once. Errors thrown while iterating are always ``NetSkeinError``:
-/// `networkFailure` when the connection drops or the task is cancelled. A failure while
+/// `networkFailure` when the connection drops, and `cancelled` when the task is cancelled. A failure while
 /// iterating is never retried, since the earlier pieces have already reached the caller.
 ///
 /// ## Topics
@@ -97,7 +97,7 @@ extension NetSkeinStream: AsyncSequence {
         ///
         /// - Returns: The next piece, or `nil` at the end of the body.
         /// - Throws: A ``NetSkeinError`` of kind ``NetSkeinError/Kind/networkFailure`` when the
-        ///   connection drops or the task is cancelled.
+        ///   connection drops, or ``NetSkeinError/Kind/cancelled`` when the task is cancelled.
         public mutating func next() async throws(Failure) -> ByteBuffer? {
             try checkCancellation()
 
@@ -105,6 +105,7 @@ extension NetSkeinStream: AsyncSequence {
             do {
                 chunk = try await base.next()
             } catch {
+                if Task.isCancelled { throw NetSkeinError.cancellation(error) }
                 throw NetSkeinError.custom(
                     kind: .networkFailure,
                     message:

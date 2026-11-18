@@ -18,7 +18,7 @@ struct CircuitBreakerClientTests {
     }
 
     func isCircuitOpen(_ error: any Error) -> Bool {
-        (error as? NetSkeinError)?.kind == .circuitOpen
+        (error as? NetSkeinError)?.kind == .notPermitted
     }
 }
 
