@@ -89,8 +89,8 @@ public struct NetSkeinError: Error, Sendable {
 
         /// The request was refused before it was sent, because it can't be sent as built, such
         /// as a URL without a scheme or host, or a ``NetSkeinRequest/json(_:)`` body that can't
-        /// be encoded. Retrying won't help: the request has to change. The error that caused it
-        /// is kept as the underlying error.
+        /// be encoded. In tests, also a request that no stub matches. Retrying won't help: the
+        /// request has to change. The error that caused it is kept as the underlying error.
         case invalidRequest
 
         /// The call did not finish within its ``NetSkeinRequest/callTimeout(_:)`` and was

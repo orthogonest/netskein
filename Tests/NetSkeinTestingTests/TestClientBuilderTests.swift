@@ -219,7 +219,7 @@ extension TestClientBuilderTests {
         await #expect {
             _ = try await client.get("https://example.com/missing").send()
         } throws: { error in
-            (error as? NetSkeinError)?.kind == .clientError
+            (error as? NetSkeinError)?.kind == .invalidRequest
         }
         #expect(client.mock?.requests.count == 1)
     }

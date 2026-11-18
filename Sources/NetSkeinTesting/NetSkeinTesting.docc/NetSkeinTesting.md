@@ -54,7 +54,7 @@ let client = NetSkeinClient.testing()
     .build()
 ```
 
-A request that no stub matches fails with a `clientError` naming the method and URL, and is never retried, so a missing stub shows up as one clear failure.
+A request that no stub matches fails with an `invalidRequest` naming the method and URL, and is never retried, so a missing stub shows up as one clear failure.
 
 Pass the client into the code under test the same way your app passes its production client. Because both are a `NetSkeinClient`, the code under test does not need to know it is being tested.
 

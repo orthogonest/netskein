@@ -28,7 +28,7 @@ struct MockHTTPClientTests {
     }
 
     @Test(
-        "MockHTTPClientTests: Verify that an unhandled route throws a clientError naming the request"
+        "MockHTTPClientTests: Verify that an unhandled route throws an invalidRequest naming the request"
     )
     func executeThrowsUnhandledRequestWhenNoMatchFound() async {
         let client = MockHTTPClient(stubs: [])
@@ -39,7 +39,7 @@ struct MockHTTPClientTests {
         } throws: { error in
             let error = error as? NetSkeinError
             let message = error?.errorDescription ?? ""
-            return error?.kind == .clientError
+            return error?.kind == .invalidRequest
                 && message.contains("GET")
                 && message.contains("https://example.com")
         }
